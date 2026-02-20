@@ -66,7 +66,7 @@ async def start(msg: types.Message):
     await msg.answer("Выбери время для ежедневного прогноза:", reply_markup=get_time_kb())
 
 @dp.callback_query(F.data.startswith("set_"))
-async def set_time(call: types.Callback_Query):
+async def set_time(call: types.CallbackQuery):
     time_val = int(call.data.split("_")[1])
     update_user(call.from_user.id, time=time_val)
     await call.answer(f"Установлено время: {time_val}:00")
