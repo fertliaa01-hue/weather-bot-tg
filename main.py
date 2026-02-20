@@ -1,26 +1,23 @@
 import asyncio
 import sqlite3
-import requests
+import aiohttp
+import datetime
+from os import getenv
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-import os
-from os import getenv
-
-# Бот будет искать эти названия в настройках хостинга
+# Настройки
 API_TOKEN = getenv('BOT_TOKEN')
 WEATHER_API_KEY = getenv('WEATHER_API_KEY')
 
-# Проверка, что ключи загрузились
 if not API_TOKEN or not WEATHER_API_KEY:
-    exit("Ошибка: Токены не найдены в переменных окружения!")
-
+    exit("Ошибка: Токены не найдены!")
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# --- БАЗА ДАННЫХ (добавили колонку time) ---
+# --- БАЗА ДАННЫХ ---
 def init_db():
     conn = sqlite3.connect('weather_bot.db')
     cur = conn.cursor()
@@ -39,18 +36,26 @@ def update_user(user_id, city=None, time=None):
     conn.commit()
     conn.close()
 
-# --- КРАСИВАЯ ПОГОДА ---
-def get_weather(city):
+# --- ПОЛУЧЕНИЕ ПОГОДЫ (Async) ---
+async def get_weather(city):
     url = f"http://api.openweathermap.org{city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
-    res = requests.get(url).json()
-    if res.get("cod") != 200: return None
-    
-    w_id = res['weather'][0]['id']
-    emoji = "☀️" if w_id == 800 else "☁️" if w_id > 800 else "🌧" if w_id >= 500 else "❄️"
-    
-    return f"{emoji} {res['name']}: {res['main']['temp']}°C, {res['weather'][0]['description']}"
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url) as resp:
+                res = await resp.json()
+                if res.get("cod") != 200: return None
+                
+                w_id = res['weather'][0]['id']
+                temp = round(res['main']['temp'])
+                desc = res['weather'][0]['description']
+                name = res['name']
+                
+                emoji = "☀️" if w_id == 800 else "☁️" if w_id > 800 else "🌧" if w_id >= 500 else "❄️"
+                return f"{emoji} {name}: {temp}°C, {desc.capitalize()}"
+        except Exception:
+            return None
 
-# --- КЛАВИАТУРЫ ---
+# --- КЛАВИАТУРА ---
 def get_time_kb():
     buttons = [
         [InlineKeyboardButton(text="07:00", callback_data="set_7"),
@@ -63,29 +68,53 @@ def get_time_kb():
 @dp.message(Command("start"))
 async def start(msg: types.Message):
     update_user(msg.chat.id, city="Москва")
-    await msg.answer("Выбери время для ежедневного прогноза:", reply_markup=get_time_kb())
+    await msg.answer("Привет! Я буду присылать погоду каждое утро.\nВыбери время рассылки (по МСК):", reply_markup=get_time_kb())
 
 @dp.callback_query(F.data.startswith("set_"))
 async def set_time(call: types.CallbackQuery):
     time_val = int(call.data.split("_")[1])
     update_user(call.from_user.id, time=time_val)
-    await call.answer(f"Установлено время: {time_val}:00")
-    await call.message.edit_text(f"✅ Время рассылки обновлено на {time_val}:00. Теперь напиши свой город!")
+    await call.message.edit_text(f"✅ Время установлено на {time_val}:00.\nТеперь напиши название своего города (например: Москва):")
 
 @dp.message()
 async def handle_msg(msg: types.Message):
-    report = get_weather(msg.text)
+    report = await get_weather(msg.text)
     if report:
         update_user(msg.chat.id, city=msg.text)
-        await msg.answer(f"Запомнил! Теперь буду присылать погоду по городу {msg.text}.\n\n{report}")
+        await msg.answer(f"Запомнил! Город: {msg.text}.\n\nТекущая погода:\n{report}")
     else:
-        await msg.answer("Город не найден 🧐")
+        await msg.answer("Не могу найти такой город. Попробуй еще раз!")
+
+# --- СЕРВИС РАССЫЛКИ ---
+async def mailing_service():
+    while True:
+        now = datetime.datetime.now()
+        # Проверяем в начале каждого часа
+        if now.minute == 0:
+            conn = sqlite3.connect('weather_bot.db')
+            cur = conn.cursor()
+            cur.execute('SELECT id, city FROM users WHERE time = ?', (now.hour,))
+            users = cur.fetchall()
+            conn.close()
+
+            for user_id, city in users:
+                weather = await get_weather(city)
+                if weather:
+                    try:
+                        await bot.send_message(user_id, f"Доброе утро! Прогноз на сегодня:\n{weather}")
+                    except Exception:
+                        pass 
+        await asyncio.sleep(60) # Спим минуту до следующей проверки
 
 # --- ЗАПУСК ---
 async def main():
     init_db()
-    # Здесь логика scheduler остается прежней (проверка каждый час)
+    # Запуск планировщика "в фоне"
+    asyncio.create_task(mailing_service())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Бот выключен")
