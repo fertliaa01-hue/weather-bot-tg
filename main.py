@@ -33,9 +33,9 @@ def update_user(user_id, city=None, time=None):
     conn.commit()
     conn.close()
 
-# --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕНО) ---
+# --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕНО ВСЁ) ---
 async def get_weather(city_or_coords):
-    # ПРАВИЛЬНЫЙ ЭНДПОИНТ: api.openweathermap.org
+    # ПРАВИЛЬНЫЙ URL: api.openweathermap.org (не просто openweather.org!)
     url = "https://api.openweathermap.org"
     params = {'appid': WEATHER_API_KEY, 'units': 'metric', 'lang': 'ru'}
     
@@ -52,7 +52,7 @@ async def get_weather(city_or_coords):
                 
                 res = await resp.json()
                 
-                # ВАЖНО: weather — это СПИСОК, берем первый элемент [0]
+                # ВНИМАНИЕ: weather — это СПИСОК [ {...} ]
                 w_info = res['weather'][0] 
                 w_id = w_info['id']
                 temp = round(res['main']['temp'])
@@ -63,7 +63,7 @@ async def get_weather(city_or_coords):
                 report = f"{emoji} {name}: {temp}°C, {desc.capitalize()}"
                 return report, name
         except Exception as e:
-            print(f"Ошибка парсинга: {e}")
+            print(f"Ошибка API: {e}")
             return None
 
 # --- КЛАВИАТУРЫ ---
@@ -76,20 +76,20 @@ def get_time_kb():
 
 def get_geo_kb():
     return ReplyKeyboardMarkup(keyboard=[[
-        KeyboardButton(text="📍 Отправить местоположение", request_location=True)
+        KeyboardButton(text="📍 Моя локация", request_location=True)
     ]], resize_keyboard=True, one_time_keyboard=True)
 
 # --- ОБРАБОТЧИКИ ---
 @dp.message(Command("start"))
 async def start(msg: types.Message):
     init_db()
-    await msg.answer("Привет! Я буду присылать погоду утром.\nВыбери время (МСК):", reply_markup=get_time_kb())
+    await msg.answer("Привет! Выбери время для рассылки (МСК):", reply_markup=get_time_kb())
 
 @dp.callback_query(F.data.startswith("set_"))
 async def set_time(call: types.CallbackQuery):
     t = int(call.data.split("_")[1])
     update_user(call.from_user.id, time=t)
-    await call.message.edit_text(f"✅ Время установлено на {t}:00.\nТеперь пришли геолокацию или напиши город.")
+    await call.message.edit_text(f"✅ Время рассылки: {t}:00.\nТеперь отправь локацию или напиши город.")
     await call.message.answer("Жду город...", reply_markup=get_geo_kb())
 
 @dp.message(F.location)
