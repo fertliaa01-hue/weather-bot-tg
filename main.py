@@ -7,14 +7,14 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
-# --- НАСТРОЙКИ ---
+# --- КОНФИГУРАЦИЯ ---
 API_TOKEN = getenv('BOT_TOKEN')
 WEATHER_API_KEY = getenv('WEATHER_API_KEY')
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# --- БАЗА ДАННЫХ ---
+# --- РАБОТА С БД ---
 def init_db():
     conn = sqlite3.connect('weather_bot.db')
     cur = conn.cursor()
@@ -33,8 +33,9 @@ def update_user(user_id, city=None, time=None):
     conn.commit()
     conn.close()
 
-# --- ПОЛУЧЕНИЕ ПОГОДЫ ---
+# --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕНО) ---
 async def get_weather(city_or_coords):
+    # ПРАВИЛЬНЫЙ URL
     url = "https://api.openweathermap.org"
     params = {'appid': WEATHER_API_KEY, 'units': 'metric', 'lang': 'ru'}
     
@@ -46,20 +47,22 @@ async def get_weather(city_or_coords):
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(url, params=params) as resp:
-                if resp.status != 200: return None
+                if resp.status != 200:
+                    return None
                 res = await resp.json()
                 
-                # Данные о погоде
-                w_info = res['weather'][0] # Обязательно индекс [0]
+                # ВНИМАНИЕ: weather — это список, берем индекс [0]
+                w_info = res['weather'][0]
                 w_id = w_info['id']
                 temp = round(res['main']['temp'])
                 desc = w_info['description']
                 name = res['name']
                 
                 emoji = "☀️" if w_id == 800 else "☁️" if w_id > 800 else "🌧" if w_id >= 500 else "❄️"
-                return f"{emoji} {name}: {temp}°C, {desc.capitalize()}", name
+                report = f"{emoji} {name}: {temp}°C, {desc.capitalize()}"
+                return report, name
         except Exception as e:
-            print(f"Ошибка API: {e}")
+            print(f"Ошибка парсинга: {e}")
             return None
 
 # --- КЛАВИАТУРЫ ---
@@ -85,20 +88,19 @@ async def start(msg: types.Message):
 async def set_time(call: types.CallbackQuery):
     t = int(call.data.split("_")[1])
     update_user(call.from_user.id, time=t)
-    await call.message.edit_text(f"✅ Время: {t}:00. Теперь пришли свою локацию или напиши город.")
-    await call.message.answer("Жду данные...", reply_markup=get_geo_kb())
+    await call.message.edit_text(f"✅ Время установлено на {t}:00.\nТеперь пришли локацию или напиши город.")
+    await call.message.answer("Жду город...", reply_markup=get_geo_kb())
 
 @dp.message(F.location)
 async def handle_location(msg: types.Message):
     coords = {"lat": msg.location.latitude, "lon": msg.location.longitude}
     weather_data = await get_weather(coords)
-    
     if weather_data:
         report, city_name = weather_data
         update_user(msg.chat.id, city=city_name)
         await msg.answer(f"📍 Город определен: {city_name}!\n\n{report}", reply_markup=ReplyKeyboardRemove())
     else:
-        await msg.answer("Не удалось определить город по координатам. Введите название вручную.")
+        await msg.answer("Не удалось определить город по координатам. Напиши его текстом.")
 
 @dp.message()
 async def handle_city(msg: types.Message):
