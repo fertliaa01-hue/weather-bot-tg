@@ -5,7 +5,7 @@ import datetime
 from os import getenv
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
 # --- НАСТРОЙКИ ---
 API_TOKEN = getenv('BOT_TOKEN')
@@ -33,27 +33,28 @@ def update_user(user_id, city=None, time=None):
     conn.commit()
     conn.close()
 
-# --- ПОЛУЧЕНИЕ ПОГОДЫ ---
+# --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕНО) ---
 async def get_weather(city_or_coords):
     url = "http://api.openweathermap.org"
     params = {'appid': WEATHER_API_KEY, 'units': 'metric', 'lang': 'ru'}
     
-    if isinstance(city_or_coords, dict): # Если переданы координаты
+    if isinstance(city_or_coords, dict):
         params.update(city_or_coords)
-    else: # Если передан текст города
+    else:
         params['q'] = city_or_coords
 
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(url, params=params) as resp:
                 res = await resp.json()
-                if res.get("cod") != 200: return None
+                if res.get("cod") != 200:
+                    return None
                 
-                # ИСПРАВЛЕНО: берем первый элемент из списка weather [0]
-                w_data = res['weather'][0]
-                w_id = w_data['id']
+                # ВОТ ЗДЕСЬ БЫЛА ОШИБКА: weather[0]
+                w_info = res['weather'][0]
+                w_id = w_info['id']
                 temp = round(res['main']['temp'])
-                desc = w_data['description']
+                desc = w_info['description']
                 name = res['name']
                 
                 emoji = "☀️" if w_id == 800 else "☁️" if w_id > 800 else "🌧" if w_id >= 500 else "❄️"
@@ -86,27 +87,26 @@ async def set_time(call: types.CallbackQuery):
     t = int(call.data.split("_")[1])
     update_user(call.from_user.id, time=t)
     await call.message.edit_text(f"✅ Время: {t}:00. Теперь напиши город или нажми кнопку ниже 👇")
-    await call.message.answer("Жду город...", reply_markup=get_geo_kb())
+    await call.message.answer("Жду город или локацию...", reply_markup=get_geo_kb())
 
-# Обработка геолокации
 @dp.message(F.location)
 async def handle_location(msg: types.Message):
     coords = {"lat": msg.location.latitude, "lon": msg.location.longitude}
     report = await get_weather(coords)
     if report:
-        city_name = report.split(":")[0].strip()[2:] # Вырезаем имя города из отчета
+        # Извлекаем название города из строки "Emoji Название: ..."
+        city_name = report.split(":")[0].split(" ", 1)[1]
         update_user(msg.chat.id, city=city_name)
-        await msg.answer(f"📍 Вижу тебя! Твой город: {city_name}.\n\n{report}", reply_markup=types.ReplyKeyboardRemove())
+        await msg.answer(f"📍 Вижу тебя! Твой город: {city_name}.\n\n{report}", reply_markup=ReplyKeyboardRemove())
     else:
         await msg.answer("Не удалось определить город по координатам.")
 
-# Обработка текста
 @dp.message()
 async def handle_city(msg: types.Message):
     report = await get_weather(msg.text)
     if report:
         update_user(msg.chat.id, city=msg.text)
-        await msg.answer(f"Запомнил: {msg.text}!\n\n{report}", reply_markup=types.ReplyKeyboardRemove())
+        await msg.answer(f"Запомнил: {msg.text}!\n\n{report}", reply_markup=ReplyKeyboardRemove())
     else:
         await msg.answer("❌ Город не найден. Попробуй еще раз.")
 
@@ -115,15 +115,17 @@ async def mailing():
     while True:
         now = datetime.datetime.now()
         if now.minute == 0:
-            conn = sqlite3.connect('weather_bot.db'); cur = conn.cursor()
+            conn = sqlite3.connect('weather_bot.db')
+            cur = conn.cursor()
             cur.execute('SELECT id, city FROM users WHERE time = ?', (now.hour,))
-            users = cur.fetchall(); conn.close()
+            users = cur.fetchall()
+            conn.close()
             for u_id, city in users:
                 w = await get_weather(city)
                 if w:
                     try: await bot.send_message(u_id, f"Доброе утро! ☕️\n{w}")
                     except: pass
-            await asyncio.sleep(60)
+            await asyncio.sleep(61) # Чтобы не сработало дважды в одну минуту
         await asyncio.sleep(30)
 
 async def main():
