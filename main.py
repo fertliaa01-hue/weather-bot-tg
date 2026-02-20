@@ -4,6 +4,7 @@ import aiohttp
 import datetime
 import logging
 import os
+import math
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
@@ -167,6 +168,129 @@ def get_kp_emoji(kp):
     else:
         return "🌟🌟🌟"
 
+# --- ФУНКЦИИ ДЛЯ ФАЗ ЛУНЫ ---
+def get_moon_phase(date=None):
+    """Рассчитать фазу луны на указанную дату"""
+    if date is None:
+        date = datetime.datetime.now()
+    
+    # Известное новолуние (пример)
+    known_new_moon = datetime.datetime(2000, 1, 6, 18, 14)
+    
+    # Синодический месяц (период смены фаз) в днях
+    synodic_month = 29.530588853
+    
+    # Разница в днях
+    delta = date - known_new_moon
+    days = delta.days + delta.seconds / 86400.0
+    
+    # Текущая фаза (0-1, где 0 - новолуние, 0.5 - полнолуние)
+    phase = (days % synodic_month) / synodic_month
+    
+    return phase
+
+def get_moon_emoji(phase):
+    """Получить эмодзи для фазы луны"""
+    if phase < 0.03 or phase > 0.97:
+        return "🌑"  # Новолуние
+    elif phase < 0.13:
+        return "🌒"  # Растущий серп
+    elif phase < 0.25:
+        return "🌓"  # Первая четверть
+    elif phase < 0.38:
+        return "🌔"  # Растущая луна
+    elif phase < 0.47:
+        return "🌕"  # Полнолуние (приближается)
+    elif phase < 0.53:
+        return "🌕"  # Полнолуние
+    elif phase < 0.62:
+        return "🌖"  # Убывающая луна
+    elif phase < 0.75:
+        return "🌗"  # Последняя четверть
+    elif phase < 0.88:
+        return "🌘"  # Убывающий серп
+    else:
+        return "🌑"  # Новолуние (приближается)
+
+def get_moon_name(phase):
+    """Получить название фазы луны"""
+    if phase < 0.03 or phase > 0.97:
+        return "Новолуние"
+    elif phase < 0.13:
+        return "Растущий серп"
+    elif phase < 0.25:
+        return "Первая четверть"
+    elif phase < 0.38:
+        return "Растущая луна"
+    elif phase < 0.47:
+        return "Прибывающая луна"
+    elif phase < 0.53:
+        return "Полнолуние"
+    elif phase < 0.62:
+        return "Убывающая луна"
+    elif phase < 0.75:
+        return "Последняя четверть"
+    elif phase < 0.88:
+        return "Убывающий серп"
+    else:
+        return "Старая луна"
+
+def get_moon_illumination(phase):
+    """Получить процент освещенности луны"""
+    # Освещенность от 0 до 100%
+    illumination = math.sin(phase * math.pi) ** 2 * 100
+    return round(illumination, 1)
+
+def get_zodiac_sign(date=None):
+    """Определить знак зодиака по дате (для дополнительной информации)"""
+    if date is None:
+        date = datetime.datetime.now()
+    
+    month = date.month
+    day = date.day
+    
+    if (month == 3 and day >= 21) or (month == 4 and day <= 19):
+        return "♈ Овен"
+    elif (month == 4 and day >= 20) or (month == 5 and day <= 20):
+        return "♉ Телец"
+    elif (month == 5 and day >= 21) or (month == 6 and day <= 20):
+        return "♊ Близнецы"
+    elif (month == 6 and day >= 21) or (month == 7 and day <= 22):
+        return "♋ Рак"
+    elif (month == 7 and day >= 23) or (month == 8 and day <= 22):
+        return "♌ Лев"
+    elif (month == 8 and day >= 23) or (month == 9 and day <= 22):
+        return "♍ Дева"
+    elif (month == 9 and day >= 23) or (month == 10 and day <= 22):
+        return "♎ Весы"
+    elif (month == 10 and day >= 23) or (month == 11 and day <= 21):
+        return "♏ Скорпион"
+    elif (month == 11 and day >= 22) or (month == 12 and day <= 21):
+        return "♐ Стрелец"
+    elif (month == 12 and day >= 22) or (month == 1 and day <= 19):
+        return "♑ Козерог"
+    elif (month == 1 and day >= 20) or (month == 2 and day <= 18):
+        return "♒ Водолей"
+    else:
+        return "♓ Рыбы"
+
+async def get_moon_data():
+    """Получить полные данные о луне"""
+    now = datetime.datetime.now()
+    phase = get_moon_phase(now)
+    emoji = get_moon_emoji(phase)
+    name = get_moon_name(phase)
+    illumination = get_moon_illumination(phase)
+    zodiac = get_zodiac_sign(now)
+    
+    return {
+        'phase': phase,
+        'emoji': emoji,
+        'name': name,
+        'illumination': illumination,
+        'zodiac': zodiac
+    }
+
 async def test_api_key():
     """Тестирование API ключа OpenWeatherMap"""
     test_url = "https://api.openweathermap.org/data/2.5/weather"
@@ -282,6 +406,9 @@ async def get_weather_with_details(city_or_coords):
                 # Получаем геомагнитные данные
                 geomagnetic = await get_geomagnetic_data()
                 
+                # Получаем данные о луне
+                moon_data = await get_moon_data()
+                
                 # Оцениваем UV-индекс
                 hour = now.hour
                 estimated_uvi = estimate_uv_from_sun(hour, clouds)
@@ -323,6 +450,14 @@ async def get_weather_with_details(city_or_coords):
                 else:
                     magnet_text = ""
                 
+                # Формируем строку с луной
+                moon_text = (
+                    f"\n\n🌙 <b>Луна сегодня:</b>\n"
+                    f"{moon_data['emoji']} {moon_data['name']}\n"
+                    f"💡 Освещенность: {moon_data['illumination']}%\n"
+                    f"♈ Знак зодиака: {moon_data['zodiac']}"
+                )
+                
                 # Совет по одежде
                 if temp < 10:
                     advice = "🧤 Оденьтесь теплее!"
@@ -351,6 +486,7 @@ async def get_weather_with_details(city_or_coords):
                 report += f"☁️ Облачность: {clouds}%\n"
                 report += uv_text
                 report += magnet_text
+                report += moon_text
                 report += f"\n\n💡 {advice}"
                 
                 return (report, name, tz_offset, None, coord)
@@ -396,7 +532,9 @@ async def get_simple_forecast(city):
         
         forecast_text += f"{time_emoji} <b>{time_str}</b> - {temp_emoji}\n"
     
-    forecast_text += "\n💡 Для точного прогноза используйте /weather"
+    # Добавляем информацию о луне на сегодня
+    moon_data = await get_moon_data()
+    forecast_text += f"\n🌙 <b>Луна сегодня:</b> {moon_data['emoji']} {moon_data['name']} ({moon_data['illumination']}%)"
     
     return forecast_text, None
 
@@ -426,6 +564,7 @@ async def help_cmd(msg: types.Message):
 /help - Показать эту справку
 /uv - Информация об UV-индексе
 /magnet - Информация о магнитных бурях
+/moon - Информация о фазе луны
 /weather - Показать погоду для сохраненного города
 /test - Проверить работу API
 
@@ -440,6 +579,7 @@ async def help_cmd(msg: types.Message):
 • Давление и облачность
 • UV-индекс (оценка)
 • Магнитные бури
+• Фаза луны
 • Советы по одежде
     """
     await msg.answer(help_text, parse_mode="HTML")
@@ -509,6 +649,42 @@ async def magnet_info(msg: types.Message):
     else:
         await msg.answer("❌ Не удалось получить данные о геомагнитной обстановке")
 
+@dp.message(Command("moon"))
+async def moon_info(msg: types.Message):
+    """Команда для получения информации о луне"""
+    moon_data = await get_moon_data()
+    
+    # Дополнительная информация о ближайших фазах
+    now = datetime.datetime.now()
+    phase = moon_data['phase']
+    
+    # Расчет дней до следующего полнолуния/новолуния
+    days_to_full = (0.5 - phase) % 1.0
+    days_to_full = min(days_to_full, 1 - days_to_full) * 29.53
+    
+    days_to_new = (1 - phase) % 1.0
+    days_to_new = min(days_to_new, 1 - days_to_new) * 29.53
+    
+    await msg.answer(
+        f"🌙 <b>Фаза луны сегодня:</b>\n\n"
+        f"{moon_data['emoji']} <b>{moon_data['name']}</b>\n"
+        f"💡 Освещенность: {moon_data['illumination']}%\n"
+        f"♈ Знак зодиака: {moon_data['zodiac']}\n\n"
+        f"📅 <b>Ближайшие события:</b>\n"
+        f"• До полнолуния: {days_to_full:.1f} дней\n"
+        f"• До новолуния: {days_to_new:.1f} дней\n\n"
+        f"<b>Все фазы луны:</b>\n"
+        f"🌑 Новолуние\n"
+        f"🌒 Растущий серп\n"
+        f"🌓 Первая четверть\n"
+        f"🌔 Растущая луна\n"
+        f"🌕 Полнолуние\n"
+        f"🌖 Убывающая луна\n"
+        f"🌗 Последняя четверть\n"
+        f"🌘 Убывающий серп",
+        parse_mode="HTML"
+    )
+
 @dp.callback_query(F.data.startswith("set_"))
 async def set_time(call: types.CallbackQuery):
     t = int(call.data.split("_")[1])
@@ -522,6 +698,7 @@ async def set_time(call: types.CallbackQuery):
                              "Доступные команды:\n"
                              "/uv - информация об UV-индексе\n"
                              "/magnet - магнитные бури\n"
+                             "/moon - фаза луны\n"
                              "/help - помощь", 
                              reply_markup=geo_kb)
     await call.answer()
@@ -566,148 +743,4 @@ async def handle_city(msg: types.Message):
         update_user(msg.chat.id, city=city, timezone=tz)
         
         # Создаем клавиатуру с кнопкой для прогноза
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="📅 Прогноз", callback_data=f"forecast_{city}")
-        ]])
-        
-        await msg.answer(f"✅ Город {city} сохранен!\n\n{report}", 
-                        reply_markup=kb,
-                        parse_mode="HTML")
-    else:
-        error_msg = result[1] if len(result) > 1 else "❌ Город не найден"
-        await msg.answer(f"{error_msg}\nНапиши, например: Москва")
-
-@dp.callback_query(F.data.startswith("forecast_"))
-async def show_forecast(call: types.CallbackQuery):
-    """Показать прогноз"""
-    await call.answer("Загружаю прогноз...")
-    
-    # Извлекаем город из callback_data
-    city = call.data.replace("forecast_", "")
-    
-    forecast, error = await get_simple_forecast(city)
-    
-    if forecast:
-        # Добавляем кнопку "Назад" к текущей погоде
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🔙 К погоде", callback_data=f"back_{city}")
-        ]])
-        
-        await call.message.edit_text(forecast, 
-                                    reply_markup=kb,
-                                    parse_mode="HTML")
-    else:
-        await call.message.answer(error or "❌ Не удалось получить прогноз")
-
-@dp.callback_query(F.data.startswith("back_"))
-async def back_to_current(call: types.CallbackQuery):
-    """Вернуться к текущей погоде"""
-    await call.answer()
-    
-    # Извлекаем город
-    city = call.data.replace("back_", "")
-    
-    # Получаем текущую погоду
-    result = await get_weather_with_details(city)
-    
-    if result[0]:
-        report, city, tz, _, coord = result
-        
-        # Создаем клавиатуру с кнопкой для прогноза
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="📅 Прогноз", callback_data=f"forecast_{city}")
-        ]])
-        
-        await call.message.edit_text(f"📍 {city}\n\n{report}", 
-                                    reply_markup=kb,
-                                    parse_mode="HTML")
-    else:
-        await call.message.edit_text("❌ Не удалось получить погоду")
-
-# --- РАССЫЛКА ПО МЕСТНОМУ ВРЕМЕНИ ---
-async def mailing():
-    while True:
-        try:
-            now_utc = datetime.datetime.now(datetime.timezone.utc)
-            if now_utc.minute == 0:
-                logger.info(f"Запуск рассылки в {now_utc}")
-                
-                conn = sqlite3.connect('weather_bot.db')
-                cur = conn.cursor()
-                cur.execute('SELECT id, city, time, timezone FROM users WHERE city IS NOT NULL AND city != ""')
-                users = cur.fetchall()
-                conn.close()
-                
-                logger.info(f"Найдено {len(users)} пользователей для рассылки")
-                
-                for u_id, city, target_h, tz_off in users:
-                    if not city:
-                        continue
-                        
-                    user_local = now_utc + datetime.timedelta(seconds=tz_off)
-                    if user_local.hour == target_h:
-                        logger.info(f"Отправка погоды пользователю {u_id} в {user_local.hour}:00")
-                        result = await get_weather_with_details(city)
-                        
-                        if result[0]:  # если есть отчет о погоде
-                            report, _, _, _, coord = result
-                            
-                            # Добавляем кнопку для прогноза
-                            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                                InlineKeyboardButton(text="📅 Прогноз", callback_data=f"forecast_{city}")
-                            ]])
-                            
-                            try: 
-                                await bot.send_message(u_id, 
-                                                      f"☀️ <b>Доброе утро!</b>\n\n{report}", 
-                                                      reply_markup=kb,
-                                                      parse_mode="HTML")
-                                logger.info(f"✅ Успешно отправлено пользователю {u_id}")
-                            except Exception as e:
-                                logger.error(f"❌ Не удалось отправить сообщение пользователю {u_id}: {e}")
-                        else:
-                            logger.error(f"❌ Не удалось получить погоду для пользователя {u_id}: {result[1]}")
-                
-                await asyncio.sleep(61)
-            await asyncio.sleep(30)
-        except Exception as e:
-            logger.error(f"Ошибка в рассылке: {e}")
-            await asyncio.sleep(60)
-
-async def main():
-    logger.info("=" * 50)
-    logger.info("🚀 ЗАПУСК БОТА ПОГОДЫ")
-    logger.info("=" * 50)
-    
-    init_db()
-    
-    # Проверяем API ключ
-    logger.info("\n🔑 ПРОВЕРКА API КЛЮЧА OPENWEATHERMAP:")
-    api_ok, api_message = await test_api_key()
-    logger.info(api_message)
-    
-    if not api_ok:
-        logger.error("\n❌ ПРОБЛЕМА С API КЛЮЧОМ!")
-        logger.error("Как получить правильный ключ:")
-        logger.error("1. Зарегистрируйтесь на https://openweathermap.org")
-        logger.error("2. Перейдите в раздел API Keys")
-        logger.error("3. Скопируйте ключ (должен выглядеть как '1a2b3c4d5e6f7g8h9i0j')")
-        logger.error("4. Вставьте его в код или в переменную окружения WEATHER_API_KEY")
-    
-    # Проверяем подключение к NOAA
-    logger.info("\n🛰️ ПРОВЕРКА ПОДКЛЮЧЕНИЯ К NOAA:")
-    geomagnetic = await get_geomagnetic_data()
-    if geomagnetic:
-        logger.info(f"✅ Подключение к NOAA работает, текущий Kp: {geomagnetic[0]}")
-    else:
-        logger.warning("⚠️ Не удалось подключиться к NOAA, магнитные бури будут недоступны")
-    
-    logger.info("\n" + "=" * 50)
-    logger.info("✅ БОТ ГОТОВ К РАБОТЕ!")
-    logger.info("=" * 50)
-    
-    asyncio.create_task(mailing())
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        kb = Inline
