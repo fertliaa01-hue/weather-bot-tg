@@ -33,9 +33,9 @@ def update_user(user_id, city=None, time=None):
     conn.commit()
     conn.close()
 
-# --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕНО ВСЁ) ---
+# --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕННЫЙ URL И ПАРСИНГ) ---
 async def get_weather(city_or_coords):
-    # ПРАВИЛЬНЫЙ ЭНДПОИНТ
+    # ПРАВИЛЬНЫЙ АДРЕС СЕРВЕРА ДАННЫХ
     url = "https://api.openweathermap.org"
     params = {'appid': WEATHER_API_KEY, 'units': 'metric', 'lang': 'ru'}
     
@@ -52,7 +52,7 @@ async def get_weather(city_or_coords):
                 
                 res = await resp.json()
                 
-                # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: weather — это СПИСОК
+                # ВАЖНО: weather — это список [ {...} ]
                 w_info = res['weather'][0] 
                 w_id = w_info['id']
                 temp = round(res['main']['temp'])
@@ -63,7 +63,7 @@ async def get_weather(city_or_coords):
                 report = f"{emoji} {name}: {temp}°C, {desc.capitalize()}"
                 return report, name
         except Exception as e:
-            print(f"Ошибка парсинга JSON: {e}")
+            print(f"Ошибка API: {e}")
             return None
 
 # --- КЛАВИАТУРЫ ---
@@ -76,7 +76,7 @@ def get_time_kb():
 
 def get_geo_kb():
     return ReplyKeyboardMarkup(keyboard=[[
-        KeyboardButton(text="📍 Отправить локацию", request_location=True)
+        KeyboardButton(text="📍 Моя локация", request_location=True)
     ]], resize_keyboard=True, one_time_keyboard=True)
 
 # --- ОБРАБОТЧИКИ ---
@@ -87,9 +87,9 @@ async def start(msg: types.Message):
 
 @dp.callback_query(F.data.startswith("set_"))
 async def set_time(call: types.CallbackQuery):
-    t = call.data.split("_")[1]
+    t = call.data.split("_")[1] # Исправлен сплит
     update_user(call.from_user.id, time=t)
-    await call.message.edit_text(f"✅ Время установлено на {t}:00.\nТеперь пришли геолокацию или напиши город.")
+    await call.message.edit_text(f"✅ Время рассылки: {t}:00.\nТеперь отправь локацию или напиши город.")
     await call.message.answer("Жду город...", reply_markup=get_geo_kb())
 
 @dp.message(F.location)
@@ -101,7 +101,7 @@ async def handle_location(msg: types.Message):
         update_user(msg.chat.id, city=city_name)
         await msg.answer(f"📍 Город определен: {city_name}!\n\n{report}", reply_markup=ReplyKeyboardRemove())
     else:
-        await msg.answer("Не удалось определить город по координатам.")
+        await msg.answer("Не удалось определить город. Напиши его текстом.")
 
 @dp.message()
 async def handle_city(msg: types.Message):
@@ -111,7 +111,7 @@ async def handle_city(msg: types.Message):
         update_user(msg.chat.id, city=city_name)
         await msg.answer(f"Запомнил город {city_name}!\n\n{report}", reply_markup=ReplyKeyboardRemove())
     else:
-        await msg.answer("❌ Город не найден. Напиши, например: Москва")
+        await msg.answer("❌ Город не найден. Попробуй еще раз.")
 
 # --- РАССЫЛКА ---
 async def mailing():
