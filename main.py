@@ -37,7 +37,6 @@ def update_user(user_id, city=None, time=None, timezone=None):
 
 # --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕНО!) ---
 async def get_weather(city_or_coords):
-    # ВНИМАНИЕ: URL должен быть api. поддоменом
     url = "https://api.openweathermap.org"
     params = {'appid': WEATHER_API_KEY, 'units': 'metric', 'lang': 'ru'}
     
@@ -64,9 +63,8 @@ async def get_weather(city_or_coords):
                 
                 emoji = "☀️" if w_id == 800 else "☁️" if w_id > 800 else "🌧" if w_id >= 500 else "❄️"
                 
-                # Простой совет
-                advice = "🧤 Оденься теплее!" if temp < 10 else "🧥 Можно в легкой куртке." if temp < 20 else "👕 Надень футболку!"
-                if w_id < 600: advice += " И возьми зонт! ☔️"
+                advice = "🧤 Оденьтесь теплее!" if temp < 10 else "🧥 Можно в легкой куртке." if temp < 20 else "👕 Наденьте футболку!"
+                if w_id < 600: advice += " И возьмите зонт! ☔️"
 
                 report = f"{emoji} <b>{name}</b>\n🌡 {temp}°C, {desc.capitalize()}\n\n💡 {advice}"
                 return report, name, tz_offset
@@ -115,7 +113,7 @@ async def handle_city(msg: types.Message):
     else:
         await msg.answer("❌ Город не найден. Напиши, например: Москва")
 
-# --- РАССЫЛКА ПО МЕСТНОМУ ВРЕМЕНИ ---
+# --- РАССЫЛКА ---
 async def mailing():
     while True:
         now_utc = datetime.datetime.now(datetime.timezone.utc)
@@ -126,7 +124,6 @@ async def mailing():
             users = cur.fetchall()
             conn.close()
             for u_id, city, target_h, tz_off in users:
-                # Считаем время пользователя: UTC + смещение из API
                 user_local = now_utc + datetime.timedelta(seconds=tz_off)
                 if user_local.hour == target_h:
                     weather_data = await get_weather(city)
