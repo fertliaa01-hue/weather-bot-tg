@@ -5,8 +5,17 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
-API_TOKEN = '8336603064:AAFtDkES4s9FVQiaJ2eqNd13A9ZImbyKly4'
-WEATHER_API_KEY = 'd821cd4c6c59d2f6b8a882c307f6f5d5'
+import os
+from os import getenv
+
+# Бот будет искать эти названия в настройках хостинга
+API_TOKEN = getenv('BOT_TOKEN')
+WEATHER_API_KEY = getenv('WEATHER_API_KEY')
+
+# Проверка, что ключи загрузились
+if not API_TOKEN or not WEATHER_API_KEY:
+    exit("Ошибка: Токены не найдены в переменных окружения!")
+
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
