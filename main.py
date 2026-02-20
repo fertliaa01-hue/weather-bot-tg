@@ -3,8 +3,7 @@ import sqlite3
 import aiohttp
 import datetime
 import logging
-import math
-from os import getenv
+import os
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
@@ -14,16 +13,33 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- НАСТРОЙКИ ---
-API_TOKEN = getenv('BOT_TOKEN')
-WEATHER_API_KEY = getenv('WEATHER_API_KEY')
+# Пробуем получить токены из переменных окружения
+API_TOKEN = os.getenv('BOT_TOKEN')
+WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
+
+# ЕСЛИ НЕ РАБОТАЕТ С ПЕРЕМЕННЫМИ ОКРУЖЕНИЯ, 
+# РАСКОММЕНТИРУЙТЕ СЛЕДУЮЩИЕ СТРОКИ И ВСТАВЬТЕ ВАШИ КЛЮЧИ:
+# API_TOKEN = "ВАШ_ТОКЕН_BOT_OT_TELEGRAM"
+# WEATHER_API_KEY = "ВАШ_API_КЛЮЧ_OPENWEATHERMAP"
 
 # Проверяем наличие токенов
 if not API_TOKEN:
-    logger.error("Не установлен BOT_TOKEN")
+    logger.error("❌ Не установлен BOT_TOKEN")
+    logger.error("Как исправить:")
+    logger.error("1. Создайте файл .env в папке с ботом")
+    logger.error("2. Добавьте в него строки:")
+    logger.error("   BOT_TOKEN=ваш_токен_бота")
+    logger.error("   WEATHER_API_KEY=ваш_ключ_openweather")
+    logger.error("3. Или вставьте ключи прямо в код (раскомментируйте строки выше)")
     exit(1)
+
 if not WEATHER_API_KEY:
-    logger.error("Не установлен WEATHER_API_KEY")
+    logger.error("❌ Не установлен WEATHER_API_KEY")
+    logger.error("Получите ключ на https://openweathermap.org/api")
     exit(1)
+
+logger.info(f"✅ API токен бота загружен: {API_TOKEN[:5]}...")
+logger.info(f"✅ Weather API ключ загружен: {WEATHER_API_KEY[:5]}...")
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
@@ -36,7 +52,7 @@ def init_db():
                    (id INTEGER PRIMARY KEY, city TEXT, time INTEGER DEFAULT 8, timezone INTEGER DEFAULT 10800)''')
     conn.commit()
     conn.close()
-    logger.info("База данных инициализирована")
+    logger.info("✅ База данных инициализирована")
 
 def update_user(user_id, city=None, time=None, timezone=None):
     conn = sqlite3.connect('weather_bot.db')
@@ -93,26 +109,8 @@ def get_humidity_emoji(humidity):
     else:
         return "💧"
 
-def get_uv_description(uvi):
-    """Получить описание уровня UV-индекса на основе времени суток"""
-    # Если UV не доступен, оцениваем на основе времени и облачности
-    if uvi is None:
-        return "🟡 Неизвестно", "Используйте солнцезащитный крем в солнечную погоду"
-    
-    if uvi <= 2:
-        return "🟢 Низкий", "Нет опасности"
-    elif uvi <= 5:
-        return "🟡 Умеренный", "Используйте солнцезащитный крем"
-    elif uvi <= 7:
-        return "🟠 Высокий", "С 11 до 16 часов оставайтесь в тени"
-    elif uvi <= 10:
-        return "🔴 Очень высокий", "Обязательно используйте защиту от солнца"
-    else:
-        return "🟣 Экстремальный", "Лучше не выходить на солнце"
-
 def estimate_uv_from_sun(hour, clouds):
     """Примерно оценить UV-индекс на основе времени суток и облачности"""
-    # Грубая оценка для демонстрации
     if hour < 8 or hour > 18:
         return 0.5  # Низкий
     elif 11 <= hour <= 15:
@@ -123,6 +121,19 @@ def estimate_uv_from_sun(hour, clouds):
     # Облачность уменьшает UV
     cloud_factor = max(0.2, 1 - (clouds / 100) * 0.7)
     return round(base_uv * cloud_factor, 1)
+
+def get_uv_description(uvi):
+    """Получить описание уровня UV-индекса"""
+    if uvi <= 2:
+        return "🟢 Низкий", "Нет опасности"
+    elif uvi <= 5:
+        return "🟡 Умеренный", "Используйте солнцезащитный крем"
+    elif uvi <= 7:
+        return "🟠 Высокий", "С 11 до 16 часов оставайтесь в тени"
+    elif uvi <= 10:
+        return "🔴 Очень высокий", "Обязательно используйте защиту от солнца"
+    else:
+        return "🟣 Экстремальный", "Лучше не выходить на солнце"
 
 def get_kp_description(kp):
     """Получить описание уровня геомагнитной активности"""
@@ -156,6 +167,27 @@ def get_kp_emoji(kp):
     else:
         return "🌟🌟🌟"
 
+async def test_api_key():
+    """Тестирование API ключа OpenWeatherMap"""
+    test_url = "https://api.openweathermap.org/data/2.5/weather"
+    test_params = {
+        'q': 'London',
+        'appid': WEATHER_API_KEY,
+        'units': 'metric'
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(test_url, params=test_params, timeout=10) as resp:
+                if resp.status == 200:
+                    return True, "✅ API ключ работает!"
+                elif resp.status == 401:
+                    return False, "❌ API ключ недействителен (код 401)"
+                else:
+                    return False, f"❌ Ошибка API: код {resp.status}"
+        except Exception as e:
+            return False, f"❌ Ошибка подключения: {e}"
+
 async def get_geomagnetic_data():
     """Получить данные о геомагнитной активности от NOAA"""
     url = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
@@ -186,32 +218,9 @@ async def get_geomagnetic_data():
             logger.error(f"Ошибка при получении геомагнитных данных: {e}")
             return None
 
-async def get_uv_index(lat, lon):
-    """Попытка получить UV-индекс через отдельный API"""
-    # Используем бесплатный API для UV-индекса
-    url = f"https://currentuvindex.com/api/v1/uvi"
-    
-    async with aiohttp.ClientSession() as session:
-        try:
-            # Пробуем получить UV через альтернативный источник
-            params = {
-                'lat': lat,
-                'lon': lon
-            }
-            async with session.get(url, params=params, timeout=5) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    return data.get('uvi', None)
-        except:
-            pass
-    
-    # Если не удалось, возвращаем None
-    return None
-
 async def get_weather_with_details(city_or_coords):
-    """Получить текущую погоду со всеми деталями, используя стандартное API """
+    """Получить текущую погоду со всеми деталями"""
     
-    # Используем стандартный Current Weather API
     url = "https://api.openweathermap.org/data/2.5/weather"
     
     params = {
@@ -231,19 +240,21 @@ async def get_weather_with_details(city_or_coords):
         try:
             logger.info(f"Отправка запроса к {url}")
             async with session.get(url, params=params, timeout=10) as resp:
+                logger.info(f"Статус ответа: {resp.status}")
+                
                 if resp.status != 200:
                     error_text = await resp.text()
                     logger.error(f"Ошибка API: статус {resp.status}, ответ: {error_text}")
                     
                     if resp.status == 401:
-                        return None, "❌ Неверный API ключ OpenWeatherMap", None, None, None
+                        return None, "❌ Неверный API ключ OpenWeatherMap. Проверьте ключ в настройках.", None, None, None
                     elif resp.status == 404:
-                        return None, "❌ Город не найден", None, None, None
+                        return None, "❌ Город не найден. Проверьте название или отправьте локацию.", None, None, None
                     else:
                         return None, f"❌ Ошибка сервера погоды (код {resp.status})", None, None, None
                 
                 res = await resp.json()
-                logger.info(f"Успешно получены данные для {res.get('name', 'неизвестного города')}")
+                logger.info(f"✅ Успешно получены данные для {res.get('name', 'неизвестного города')}")
                 
                 # Получаем текущее время для расчета UV
                 now = datetime.datetime.now()
@@ -271,7 +282,7 @@ async def get_weather_with_details(city_or_coords):
                 # Получаем геомагнитные данные
                 geomagnetic = await get_geomagnetic_data()
                 
-                # Оцениваем UV-индекс (так как стандартное API не дает UV)
+                # Оцениваем UV-индекс
                 hour = now.hour
                 estimated_uvi = estimate_uv_from_sun(hour, clouds)
                 uv_desc, uv_advice = get_uv_description(estimated_uvi)
@@ -354,16 +365,15 @@ async def get_weather_with_details(city_or_coords):
             logger.error(f"Неожиданная ошибка: {e}")
             return None, f"❌ Неизвестная ошибка: {e}", None, None, None
 
-async def get_hourly_forecast(city):
-    """Получить почасовой прогноз на 24 часа (имитация)"""
-    # Из-за ограничений API, делаем прогноз на основе текущих данных
-    # В реальности нужно использовать forecast API
-    
+async def get_simple_forecast(city):
+    """Получить простой прогноз"""
     forecast_text = "📅 <b>Прогноз на сегодня:</b>\n\n"
     now = datetime.datetime.now()
     
-    for i in range(8):  # 8 временных точек
-        hour = (now.hour + i * 3) % 24
+    # Прогноз на ближайшие часы
+    hours = [(now.hour + i) % 24 for i in range(0, 24, 3)]
+    
+    for hour in hours[:8]:  # Максимум 8 временных точек
         time_str = f"{hour:02d}:00"
         
         # Эмодзи для времени суток
@@ -376,17 +386,17 @@ async def get_hourly_forecast(city):
         else:
             time_emoji = "🌙"
         
-        # Примерная температура (колеблется в течение дня)
+        # Примерная температура (для демонстрации)
         if 12 <= hour <= 15:
-            temp = "~20°"
+            temp_emoji = "🌡️ 18-22°C"
         elif hour < 6 or hour > 21:
-            temp = "~12°"
+            temp_emoji = "🌡️ 10-14°C"
         else:
-            temp = "~16°"
+            temp_emoji = "🌡️ 14-18°C"
         
-        forecast_text += f"{time_emoji} <b>{time_str}</b> {temp}\n"
+        forecast_text += f"{time_emoji} <b>{time_str}</b> - {temp_emoji}\n"
     
-    forecast_text += "\n💡 Для точного прогноза используйте специализированные сервисы"
+    forecast_text += "\n💡 Для точного прогноза используйте /weather"
     
     return forecast_text, None
 
@@ -394,6 +404,12 @@ async def get_hourly_forecast(city):
 @dp.message(Command("start"))
 async def start(msg: types.Message):
     init_db()
+    
+    # Проверяем API ключ при старте
+    api_ok, api_message = await test_api_key()
+    if not api_ok:
+        await msg.answer(f"⚠️ {api_message}\nБот может работать некорректно.")
+    
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="07:00", callback_data="set_7"),
         InlineKeyboardButton(text="08:00", callback_data="set_8"),
@@ -401,9 +417,65 @@ async def start(msg: types.Message):
     ]])
     await msg.answer("Привет! Давай настроим рассылку погоды.\nВыбери время:", reply_markup=kb)
 
+@dp.message(Command("help"))
+async def help_cmd(msg: types.Message):
+    help_text = """
+<b>🤖 Команды бота:</b>
+
+/start - Начать настройку
+/help - Показать эту справку
+/uv - Информация об UV-индексе
+/magnet - Информация о магнитных бурях
+/weather - Показать погоду для сохраненного города
+/test - Проверить работу API
+
+<b>Как пользоваться:</b>
+1. Выберите время для рассылки
+2. Отправьте свою локацию или название города
+3. Получайте ежедневную погоду с деталями
+
+<b>В погоде отображается:</b>
+• Температура и ощущение
+• Влажность и ветер
+• Давление и облачность
+• UV-индекс (оценка)
+• Магнитные бури
+• Советы по одежде
+    """
+    await msg.answer(help_text, parse_mode="HTML")
+
+@dp.message(Command("test"))
+async def test_cmd(msg: types.Message):
+    await msg.answer("🔄 Проверка API ключа...")
+    api_ok, api_message = await test_api_key()
+    await msg.answer(api_message)
+
+@dp.message(Command("weather"))
+async def weather_cmd(msg: types.Message):
+    conn = sqlite3.connect('weather_bot.db')
+    cur = conn.cursor()
+    cur.execute('SELECT city FROM users WHERE id = ?', (msg.from_user.id,))
+    result = cur.fetchone()
+    conn.close()
+    
+    if result and result[0]:
+        city = result[0]
+        await msg.answer(f"🔄 Получаю погоду для {city}...")
+        result = await get_weather_with_details(city)
+        
+        if result[0]:
+            report, city, tz, _, coord = result
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="📅 Прогноз", callback_data=f"forecast_{city}")
+            ]])
+            await msg.answer(report, reply_markup=kb, parse_mode="HTML")
+        else:
+            await msg.answer(result[1])
+    else:
+        await msg.answer("❌ Город не сохранен. Отправьте локацию или название города.")
+
 @dp.message(Command("uv"))
 async def uv_info(msg: types.Message):
-    """Команда для получения информации о UV-индексе"""
     await msg.answer("☀️ <b>Что такое UV-индекс?</b>\n\n"
                     "UV-индекс показывает уровень ультрафиолетового излучения.\n\n"
                     "🟢 <b>0-2 (Низкий):</b> Безопасно\n"
@@ -416,7 +488,6 @@ async def uv_info(msg: types.Message):
 
 @dp.message(Command("magnet"))
 async def magnet_info(msg: types.Message):
-    """Команда для получения информации о магнитных бурях"""
     geomagnetic = await get_geomagnetic_data()
     if geomagnetic:
         kp, trend = geomagnetic
@@ -447,11 +518,17 @@ async def set_time(call: types.CallbackQuery):
         resize_keyboard=True
     )
     await call.message.edit_text(f"✅ Время установлено на {t}:00.\nТеперь отправь локацию или напиши город.")
-    await call.message.answer("Жду город...\n\nДоступные команды:\n/uv - информация о UV-индексе\n/magnet - магнитные бури", reply_markup=geo_kb)
+    await call.message.answer("ℹ️ Отправьте геопозицию или название города\n\n"
+                             "Доступные команды:\n"
+                             "/uv - информация об UV-индексе\n"
+                             "/magnet - магнитные бури\n"
+                             "/help - помощь", 
+                             reply_markup=geo_kb)
     await call.answer()
 
 @dp.message(F.location)
 async def handle_location(msg: types.Message):
+    await msg.answer("🔄 Получаю погоду по вашему местоположению...")
     coords = {"lat": msg.location.latitude, "lon": msg.location.longitude}
     result = await get_weather_with_details(coords)
     
@@ -463,7 +540,7 @@ async def handle_location(msg: types.Message):
         
         # Создаем клавиатуру с кнопкой для прогноза
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="📅 Прогноз на сегодня", callback_data=f"forecast_{city}")
+            InlineKeyboardButton(text="📅 Прогноз", callback_data=f"forecast_{city}")
         ]])
         
         await msg.answer(f"📍 Город определен: {city}!\n\n{report}", 
@@ -478,7 +555,8 @@ async def handle_city(msg: types.Message):
     # Игнорируем команды
     if msg.text.startswith('/'):
         return
-        
+    
+    await msg.answer(f"🔄 Ищу город {msg.text}...")
     result = await get_weather_with_details(msg.text)
     
     if result[0]:  # если есть отчет о погоде
@@ -489,7 +567,7 @@ async def handle_city(msg: types.Message):
         
         # Создаем клавиатуру с кнопкой для прогноза
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="📅 Прогноз на сегодня", callback_data=f"forecast_{city}")
+            InlineKeyboardButton(text="📅 Прогноз", callback_data=f"forecast_{city}")
         ]])
         
         await msg.answer(f"✅ Город {city} сохранен!\n\n{report}", 
@@ -507,12 +585,12 @@ async def show_forecast(call: types.CallbackQuery):
     # Извлекаем город из callback_data
     city = call.data.replace("forecast_", "")
     
-    forecast, error = await get_hourly_forecast(city)
+    forecast, error = await get_simple_forecast(city)
     
     if forecast:
         # Добавляем кнопку "Назад" к текущей погоде
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🔙 К текущей погоде", callback_data=f"back_{city}")
+            InlineKeyboardButton(text="🔙 К погоде", callback_data=f"back_{city}")
         ]])
         
         await call.message.edit_text(forecast, 
@@ -537,7 +615,7 @@ async def back_to_current(call: types.CallbackQuery):
         
         # Создаем клавиатуру с кнопкой для прогноза
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="📅 Прогноз на сегодня", callback_data=f"forecast_{city}")
+            InlineKeyboardButton(text="📅 Прогноз", callback_data=f"forecast_{city}")
         ]])
         
         await call.message.edit_text(f"📍 {city}\n\n{report}", 
@@ -576,7 +654,7 @@ async def mailing():
                             
                             # Добавляем кнопку для прогноза
                             kb = InlineKeyboardMarkup(inline_keyboard=[[
-                                InlineKeyboardButton(text="📅 Прогноз на сегодня", callback_data=f"forecast_{city}")
+                                InlineKeyboardButton(text="📅 Прогноз", callback_data=f"forecast_{city}")
                             ]])
                             
                             try: 
@@ -584,11 +662,11 @@ async def mailing():
                                                       f"☀️ <b>Доброе утро!</b>\n\n{report}", 
                                                       reply_markup=kb,
                                                       parse_mode="HTML")
-                                logger.info(f"Успешно отправлено пользователю {u_id}")
+                                logger.info(f"✅ Успешно отправлено пользователю {u_id}")
                             except Exception as e:
-                                logger.error(f"Не удалось отправить сообщение пользователю {u_id}: {e}")
+                                logger.error(f"❌ Не удалось отправить сообщение пользователю {u_id}: {e}")
                         else:
-                            logger.error(f"Не удалось получить погоду для пользователя {u_id}: {result[1]}")
+                            logger.error(f"❌ Не удалось получить погоду для пользователя {u_id}: {result[1]}")
                 
                 await asyncio.sleep(61)
             await asyncio.sleep(30)
@@ -597,28 +675,36 @@ async def mailing():
             await asyncio.sleep(60)
 
 async def main():
-    logger.info("Запуск бота...")
+    logger.info("=" * 50)
+    logger.info("🚀 ЗАПУСК БОТА ПОГОДЫ")
+    logger.info("=" * 50)
+    
     init_db()
     
-    # Проверяем подключение к API с простым запросом
-    logger.info("Проверка подключения к OpenWeatherMap...")
-    try:
-        test_result = await get_weather_with_details("Москва")
-        if test_result[0]:
-            logger.info("✅ Подключение к OpenWeatherMap работает")
-            logger.info("✅ API ключ корректен")
-        else:
-            logger.error(f"❌ Ошибка: {test_result[1]}")
-    except Exception as e:
-        logger.error(f"❌ Ошибка при проверке: {e}")
+    # Проверяем API ключ
+    logger.info("\n🔑 ПРОВЕРКА API КЛЮЧА OPENWEATHERMAP:")
+    api_ok, api_message = await test_api_key()
+    logger.info(api_message)
+    
+    if not api_ok:
+        logger.error("\n❌ ПРОБЛЕМА С API КЛЮЧОМ!")
+        logger.error("Как получить правильный ключ:")
+        logger.error("1. Зарегистрируйтесь на https://openweathermap.org")
+        logger.error("2. Перейдите в раздел API Keys")
+        logger.error("3. Скопируйте ключ (должен выглядеть как '1a2b3c4d5e6f7g8h9i0j')")
+        logger.error("4. Вставьте его в код или в переменную окружения WEATHER_API_KEY")
     
     # Проверяем подключение к NOAA
-    logger.info("Проверка подключения к NOAA для геомагнитных данных...")
+    logger.info("\n🛰️ ПРОВЕРКА ПОДКЛЮЧЕНИЯ К NOAA:")
     geomagnetic = await get_geomagnetic_data()
     if geomagnetic:
         logger.info(f"✅ Подключение к NOAA работает, текущий Kp: {geomagnetic[0]}")
     else:
         logger.warning("⚠️ Не удалось подключиться к NOAA, магнитные бури будут недоступны")
+    
+    logger.info("\n" + "=" * 50)
+    logger.info("✅ БОТ ГОТОВ К РАБОТЕ!")
+    logger.info("=" * 50)
     
     asyncio.create_task(mailing())
     await dp.start_polling(bot)
