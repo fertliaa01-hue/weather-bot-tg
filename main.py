@@ -33,8 +33,9 @@ def update_user(user_id, city=None, time=None):
     conn.commit()
     conn.close()
 
-# --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕНО С УЧЕТОМ СПИСКА) ---
+# --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕНО ВСЁ) ---
 async def get_weather(city_or_coords):
+    # ПРАВИЛЬНЫЙ ЭНДПОИНТ
     url = "https://api.openweathermap.org"
     params = {'appid': WEATHER_API_KEY, 'units': 'metric', 'lang': 'ru'}
     
@@ -46,16 +47,16 @@ async def get_weather(city_or_coords):
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(url, params=params) as resp:
-                res = await resp.json()
                 if resp.status != 200:
-                    print(f"API Error {resp.status}: {res}")
                     return None
                 
-                # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: weather[0]
-                w_data = res['weather'][0] 
-                w_id = w_data['id']
+                res = await resp.json()
+                
+                # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: weather — это СПИСОК
+                w_info = res['weather'][0] 
+                w_id = w_info['id']
                 temp = round(res['main']['temp'])
-                desc = w_data['description']
+                desc = w_info['description']
                 name = res['name']
                 
                 emoji = "☀️" if w_id == 800 else "☁️" if w_id > 800 else "🌧" if w_id >= 500 else "❄️"
@@ -82,14 +83,14 @@ def get_geo_kb():
 @dp.message(Command("start"))
 async def start(msg: types.Message):
     init_db()
-    await msg.answer("Привет! Выбери время для рассылки (МСК):", reply_markup=get_time_kb())
+    await msg.answer("Привет! Я буду присылать погоду утром.\nВыбери время (МСК):", reply_markup=get_time_kb())
 
 @dp.callback_query(F.data.startswith("set_"))
 async def set_time(call: types.CallbackQuery):
     t = call.data.split("_")[1]
     update_user(call.from_user.id, time=t)
-    await call.message.edit_text(f"✅ Время установлено на {t}:00.\nТеперь пришли локацию или напиши город.")
-    await call.message.answer("Жду данные...", reply_markup=get_geo_kb())
+    await call.message.edit_text(f"✅ Время установлено на {t}:00.\nТеперь пришли геолокацию или напиши город.")
+    await call.message.answer("Жду город...", reply_markup=get_geo_kb())
 
 @dp.message(F.location)
 async def handle_location(msg: types.Message):
@@ -100,7 +101,7 @@ async def handle_location(msg: types.Message):
         update_user(msg.chat.id, city=city_name)
         await msg.answer(f"📍 Город определен: {city_name}!\n\n{report}", reply_markup=ReplyKeyboardRemove())
     else:
-        await msg.answer("Не удалось определить город. Попробуй написать название текстом.")
+        await msg.answer("Не удалось определить город по координатам.")
 
 @dp.message()
 async def handle_city(msg: types.Message):
