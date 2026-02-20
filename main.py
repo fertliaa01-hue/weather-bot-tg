@@ -501,42 +501,82 @@ async def get_weather_with_details(city_or_coords):
             logger.error(f"Неожиданная ошибка: {e}")
             return None, f"❌ Неизвестная ошибка: {e}", None, None, None
 
-async def get_simple_forecast(city):
-    """Получить простой прогноз"""
-    forecast_text = "📅 <b>Прогноз на сегодня:</b>\n\n"
-    now = datetime.datetime.now()
+# ИСПРАВЛЕНО: Возвращаем правильный почасовой прогноз как было раньше
+async def get_hourly_forecast(lat, lon):
+    """Получить почасовой прогноз на 24 часа через One Call API"""
+    url = "https://api.openweathermap.org/data/3.0/onecall"
     
-    # Прогноз на ближайшие часы
-    hours = [(now.hour + i) % 24 for i in range(0, 24, 3)]
+    params = {
+        'appid': WEATHER_API_KEY,
+        'lat': lat,
+        'lon': lon,
+        'units': 'metric',
+        'lang': 'ru',
+        'exclude': 'current,minutely,daily'
+    }
     
-    for hour in hours[:8]:  # Максимум 8 временных точек
-        time_str = f"{hour:02d}:00"
-        
-        # Эмодзи для времени суток
-        if 6 <= hour < 12:
-            time_emoji = "🌅"
-        elif 12 <= hour < 18:
-            time_emoji = "☀️"
-        elif 18 <= hour < 23:
-            time_emoji = "🌆"
-        else:
-            time_emoji = "🌙"
-        
-        # Примерная температура (для демонстрации)
-        if 12 <= hour <= 15:
-            temp_emoji = "🌡️ 18-22°C"
-        elif hour < 6 or hour > 21:
-            temp_emoji = "🌡️ 10-14°C"
-        else:
-            temp_emoji = "🌡️ 14-18°C"
-        
-        forecast_text += f"{time_emoji} <b>{time_str}</b> - {temp_emoji}\n"
-    
-    # Добавляем информацию о луне на сегодня
-    moon_data = await get_moon_data()
-    forecast_text += f"\n🌙 <b>Луна сегодня:</b> {moon_data['emoji']} {moon_data['name']} ({moon_data['illumination']}%)"
-    
-    return forecast_text, None
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url, params=params, timeout=10) as resp:
+                if resp.status != 200:
+                    return None, "❌ Не удалось получить прогноз"
+                
+                res = await resp.json()
+                
+                forecast_text = "📅 <b>Почасовой прогноз на 24 часа:</b>\n\n"
+                
+                for i, item in enumerate(res['hourly'][:8]):  # Берем 8 записей (24 часа с шагом 3 часа)
+                    dt = datetime.datetime.fromtimestamp(item['dt'])
+                    time_str = dt.strftime("%H:%M")
+                    temp = round(item['temp'])
+                    weather = item['weather'][0]
+                    desc = weather['description']
+                    uvi = item.get('uvi', 0)
+                    
+                    # Эмодзи для времени суток
+                    if 6 <= dt.hour < 12:
+                        time_emoji = "🌅"
+                    elif 12 <= dt.hour < 18:
+                        time_emoji = "☀️"
+                    elif 18 <= dt.hour < 23:
+                        time_emoji = "🌆"
+                    else:
+                        time_emoji = "🌙"
+                    
+                    # Эмодзи для погоды
+                    weather_id = weather['id']
+                    if weather_id == 800:
+                        weather_emoji = "☀️"
+                    elif weather_id > 800:
+                        weather_emoji = "☁️"
+                    elif weather_id >= 500:
+                        weather_emoji = "🌧"
+                    elif weather_id >= 600:
+                        weather_emoji = "❄️"
+                    elif weather_id >= 300:
+                        weather_emoji = "🌦"
+                    elif weather_id >= 200:
+                        weather_emoji = "⛈"
+                    else:
+                        weather_emoji = "🌡"
+                    
+                    # Эмодзи для UV
+                    if uvi <= 2:
+                        uv_emoji = "☀️"
+                    elif uvi <= 5:
+                        uv_emoji = "☀️☀️"
+                    elif uvi <= 7:
+                        uv_emoji = "☀️☀️☀️"
+                    else:
+                        uv_emoji = "☀️☀️☀️☀️"
+                    
+                    forecast_text += f"{time_emoji} <b>{time_str}</b> {weather_emoji} {temp}°C, {desc} | UV: {uvi:.1f} {uv_emoji}\n"
+                
+                return forecast_text, None
+                
+        except Exception as e:
+            logger.error(f"Ошибка получения прогноза: {e}")
+            return None, "❌ Ошибка получения прогноза"
 
 # --- ОБРАБОТЧИКИ ---
 @dp.message(Command("start"))
@@ -606,7 +646,7 @@ async def weather_cmd(msg: types.Message):
         if result[0]:
             report, city, tz, _, coord = result
             kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="📅 Прогноз", callback_data=f"forecast_{city}")
+                InlineKeyboardButton(text="📅 Почасовой прогноз", callback_data=f"forecast_{coord['lat']}_{coord['lon']}")
             ]])
             await msg.answer(report, reply_markup=kb, parse_mode="HTML")
         else:
@@ -704,41 +744,4 @@ async def set_time(call: types.CallbackQuery):
 @dp.message(F.location)
 async def handle_location(msg: types.Message):
     await msg.answer("🔄 Получаю погоду по вашему местоположению...")
-    coords = {"lat": msg.location.latitude, "lon": msg.location.longitude}
-    result = await get_weather_with_details(coords)
-    
-    if result[0]:  # если есть отчет о погоде
-        report, city, tz, _, coord = result
-        
-        # Сохраняем город
-        update_user(msg.chat.id, city=city, timezone=tz)
-        
-        # Создаем клавиатуру с кнопкой для прогноза
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="📅 Прогноз", callback_data=f"forecast_{city}")
-        ]])
-        
-        await msg.answer(f"📍 Город определен: {city}!\n\n{report}", 
-                        reply_markup=kb,
-                        parse_mode="HTML")
-    else:
-        error_msg = result[1] if len(result) > 1 else "❌ Ошибка получения погоды"
-        await msg.answer(f"{error_msg}\nПопробуй написать город текстом.")
-
-@dp.message()
-async def handle_city(msg: types.Message):
-    # Игнорируем команды
-    if msg.text.startswith('/'):
-        return
-    
-    await msg.answer(f"🔄 Ищу город {msg.text}...")
-    result = await get_weather_with_details(msg.text)
-    
-    if result[0]:  # если есть отчет о погоде
-        report, city, tz, _, coord = result
-        
-        # Сохраняем город
-        update_user(msg.chat.id, city=city, timezone=tz)
-        
-        # Создаем клавиатуру с кнопкой для прогноза
-        kb =
+    coords = {"lat": msg.location.latitude, "lon": msg.location.long
