@@ -35,7 +35,7 @@ def update_user(user_id, city=None, time=None, timezone=None):
     conn.commit()
     conn.close()
 
-# --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕНО!) ---
+# --- ПОЛУЧЕНИЕ ПОГОДЫ ---
 async def get_weather(city_or_coords):
     url = "https://api.openweathermap.org"
     params = {'appid': WEATHER_API_KEY, 'units': 'metric', 'lang': 'ru'}
@@ -113,7 +113,7 @@ async def handle_city(msg: types.Message):
     else:
         await msg.answer("❌ Город не найден. Напиши, например: Москва")
 
-# --- РАССЫЛКА ---
+# --- РАССЫЛКА ПО МЕСТНОМУ ВРЕМЕНИ ---
 async def mailing():
     while True:
         now_utc = datetime.datetime.now(datetime.timezone.utc)
@@ -128,7 +128,8 @@ async def mailing():
                 if user_local.hour == target_h:
                     weather_data = await get_weather(city)
                     if weather_data:
-                        try: await bot.send_message(u_id, f"Доброе утро! ☕️\n\n{weather_data[0]}", parse_mode="HTML")
+                        report, _, _ = weather_data # Распаковка кортежа
+                        try: await bot.send_message(u_id, f"Доброе утро! ☕️\n\n{report}", parse_mode="HTML")
                         except: pass
             await asyncio.sleep(61)
         await asyncio.sleep(30)
