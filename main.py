@@ -35,9 +35,9 @@ def update_user(user_id, city=None, time=None, timezone=None):
     conn.commit()
     conn.close()
 
-# --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕННЫЙ URL И ПАРСИНГ) ---
+# --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕНО!) ---
 async def get_weather(city_or_coords):
-    # ПРАВИЛЬНЫЙ АДРЕС СЕРВЕРА ДАННЫХ
+    # ВНИМАНИЕ: URL должен быть api. поддоменом
     url = "https://api.openweathermap.org"
     params = {'appid': WEATHER_API_KEY, 'units': 'metric', 'lang': 'ru'}
     
@@ -54,7 +54,7 @@ async def get_weather(city_or_coords):
                 
                 res = await resp.json()
                 
-                # ВАЖНО: weather — это список [ {...} ], берем первый элемент [0]
+                # ИСПРАВЛЕНО: weather — это список, берем индекс [0]
                 w_info = res['weather'][0] 
                 w_id = w_info['id']
                 temp = round(res['main']['temp'])
@@ -66,11 +66,12 @@ async def get_weather(city_or_coords):
                 
                 # Простой совет
                 advice = "🧤 Оденься теплее!" if temp < 10 else "🧥 Можно в легкой куртке." if temp < 20 else "👕 Надень футболку!"
-                
+                if w_id < 600: advice += " И возьми зонт! ☔️"
+
                 report = f"{emoji} <b>{name}</b>\n🌡 {temp}°C, {desc.capitalize()}\n\n💡 {advice}"
                 return report, name, tz_offset
         except Exception as e:
-            print(f"Критическая ошибка API: {e}")
+            print(f"Ошибка API: {e}")
             return None
 
 # --- ОБРАБОТЧИКИ ---
@@ -90,7 +91,7 @@ async def set_time(call: types.CallbackQuery):
     update_user(call.from_user.id, time=t)
     geo_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📍 Отправить локацию", request_location=True)]], resize_keyboard=True)
     await call.message.edit_text(f"✅ Время установлено на {t}:00.\nТеперь отправь локацию или напиши город.")
-    await call.message.answer("Жду...", reply_markup=geo_kb)
+    await call.message.answer("Жду город...", reply_markup=geo_kb)
     await call.answer()
 
 @dp.message(F.location)
