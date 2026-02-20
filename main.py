@@ -7,14 +7,14 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
-# --- КОНФИГУРАЦИЯ ---
+# --- НАСТРОЙКИ ---
 API_TOKEN = getenv('BOT_TOKEN')
 WEATHER_API_KEY = getenv('WEATHER_API_KEY')
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# --- РАБОТА С БД ---
+# --- БАЗА ДАННЫХ ---
 def init_db():
     conn = sqlite3.connect('weather_bot.db')
     cur = conn.cursor()
@@ -35,7 +35,7 @@ def update_user(user_id, city=None, time=None):
 
 # --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕНО) ---
 async def get_weather(city_or_coords):
-    # ПРАВИЛЬНЫЙ URL
+    # ПРАВИЛЬНЫЙ ЭНДПОИНТ: api.openweathermap.org
     url = "https://api.openweathermap.org"
     params = {'appid': WEATHER_API_KEY, 'units': 'metric', 'lang': 'ru'}
     
@@ -49,10 +49,11 @@ async def get_weather(city_or_coords):
             async with session.get(url, params=params) as resp:
                 if resp.status != 200:
                     return None
+                
                 res = await resp.json()
                 
-                # ВНИМАНИЕ: weather — это список, берем индекс [0]
-                w_info = res['weather'][0]
+                # ВАЖНО: weather — это СПИСОК, берем первый элемент [0]
+                w_info = res['weather'][0] 
                 w_id = w_info['id']
                 temp = round(res['main']['temp'])
                 desc = w_info['description']
@@ -82,13 +83,13 @@ def get_geo_kb():
 @dp.message(Command("start"))
 async def start(msg: types.Message):
     init_db()
-    await msg.answer("Привет! Выбери время для рассылки (МСК):", reply_markup=get_time_kb())
+    await msg.answer("Привет! Я буду присылать погоду утром.\nВыбери время (МСК):", reply_markup=get_time_kb())
 
 @dp.callback_query(F.data.startswith("set_"))
 async def set_time(call: types.CallbackQuery):
     t = int(call.data.split("_")[1])
     update_user(call.from_user.id, time=t)
-    await call.message.edit_text(f"✅ Время установлено на {t}:00.\nТеперь пришли локацию или напиши город.")
+    await call.message.edit_text(f"✅ Время установлено на {t}:00.\nТеперь пришли геолокацию или напиши город.")
     await call.message.answer("Жду город...", reply_markup=get_geo_kb())
 
 @dp.message(F.location)
@@ -100,7 +101,7 @@ async def handle_location(msg: types.Message):
         update_user(msg.chat.id, city=city_name)
         await msg.answer(f"📍 Город определен: {city_name}!\n\n{report}", reply_markup=ReplyKeyboardRemove())
     else:
-        await msg.answer("Не удалось определить город по координатам. Напиши его текстом.")
+        await msg.answer("Не удалось определить город по координатам.")
 
 @dp.message()
 async def handle_city(msg: types.Message):
