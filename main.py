@@ -20,8 +20,8 @@ WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
 
 # ЕСЛИ НЕ РАБОТАЕТ С ПЕРЕМЕННЫМИ ОКРУЖЕНИЯ, 
 # РАСКОММЕНТИРУЙТЕ СЛЕДУЮЩИЕ СТРОКИ И ВСТАВЬТЕ ВАШИ КЛЮЧИ:
-# API_TOKEN = "ВАШ_ТОКЕН_BOT_OT_TELEGRAM"
-# WEATHER_API_KEY = "ВАШ_API_КЛЮЧ_OPENWEATHERMAP"
+# API_TOKEN = "7380636107:AAHwIamzDnWliie9ykZ77Og9iXm58yGz-hE"
+# WEATHER_API_KEY = "b50d4e07ca1d8d3e24ffc7c7a6e27a1c"
 
 # Проверяем наличие токенов
 if not API_TOKEN:
@@ -654,11 +654,9 @@ async def moon_info(msg: types.Message):
     """Команда для получения информации о луне"""
     moon_data = await get_moon_data()
     
-    # Дополнительная информация о ближайших фазах
-    now = datetime.datetime.now()
+    # Расчет дней до следующего полнолуния/новолуния
     phase = moon_data['phase']
     
-    # Расчет дней до следующего полнолуния/новолуния
     days_to_full = (0.5 - phase) % 1.0
     days_to_full = min(days_to_full, 1 - days_to_full) * 29.53
     
@@ -743,4 +741,4 @@ async def handle_city(msg: types.Message):
         update_user(msg.chat.id, city=city, timezone=tz)
         
         # Создаем клавиатуру с кнопкой для прогноза
-        kb = Inline
+        kb =
