@@ -64,9 +64,36 @@ def update_user(user_id, city=None, time=None, timezone=None):
     conn.commit()
     conn.close()
 
-# --- ПОЛУЧЕНИЕ ПОГОДЫ ---
+# --- ФУНКЦИИ ДЛЯ ПОГОДЫ ---
+def get_wind_direction(deg):
+    """Получить направление ветра по градусам"""
+    directions = ['северный', 'северо-восточный', 'восточный', 'юго-восточный', 
+                  'южный', 'юго-западный', 'западный', 'северо-западный']
+    ix = round(deg / 45) % 8
+    return directions[ix]
+
+def get_wind_emoji(speed):
+    """Получить эмодзи для скорости ветра"""
+    if speed < 1:
+        return "🍃"
+    elif speed < 3:
+        return "🌬"
+    elif speed < 8:
+        return "💨"
+    else:
+        return "🌪"
+
+def get_humidity_emoji(humidity):
+    """Получить эмодзи для влажности"""
+    if humidity < 30:
+        return "🏜"
+    elif humidity < 60:
+        return "🌿"
+    else:
+        return "💧"
+
 async def get_weather(city_or_coords):
-    # Правильный URL для API OpenWeatherMap
+    """Получить текущую погоду"""
     url = "https://api.openweathermap.org/data/2.5/weather"
     
     params = {
@@ -84,10 +111,7 @@ async def get_weather(city_or_coords):
 
     async with aiohttp.ClientSession() as session:
         try:
-            logger.info(f"Отправка запроса к {url} с params={params}")
             async with session.get(url, params=params, timeout=10) as resp:
-                logger.info(f"Статус ответа: {resp.status}")
-                
                 if resp.status != 200:
                     error_text = await resp.text()
                     logger.error(f"Ошибка API: статус {resp.status}, ответ: {error_text}")
@@ -100,35 +124,49 @@ async def get_weather(city_or_coords):
                         return None, f"❌ Ошибка сервера погоды (код {resp.status})"
                 
                 res = await resp.json()
-                logger.info(f"Получен ответ от API: {res}")
                 
                 # Проверяем наличие необходимых полей
                 if 'weather' not in res or 'main' not in res:
                     logger.error(f"Неожиданный ответ API: {res}")
                     return None, "❌ Неверный формат ответа от сервера"
                 
+                # Основная информация
                 w_info = res['weather'][0]
                 w_id = w_info['id']
                 temp = round(res['main']['temp'])
+                feels_like = round(res['main']['feels_like'])
                 desc = w_info['description']
                 name = res['name']
                 tz_offset = res.get('timezone', 10800)
                 
-                # Выбор эмодзи
+                # Дополнительная информация
+                humidity = res['main']['humidity']
+                pressure = round(res['main']['pressure'] * 0.750062)  # переводим в мм рт. ст.
+                wind_speed = res['wind']['speed']
+                wind_deg = res['wind'].get('deg', 0)
+                wind_gust = res['wind'].get('gust', 0)
+                clouds = res['clouds']['all']
+                
+                # Выбор эмодзи для погоды
                 if w_id == 800:
-                    emoji = "☀️"
+                    weather_emoji = "☀️"
                 elif w_id > 800:
-                    emoji = "☁️"
+                    weather_emoji = "☁️"
                 elif w_id >= 500:
-                    emoji = "🌧"
+                    weather_emoji = "🌧"
                 elif w_id >= 600:
-                    emoji = "❄️"
+                    weather_emoji = "❄️"
                 elif w_id >= 300:
-                    emoji = "🌦"
+                    weather_emoji = "🌦"
                 elif w_id >= 200:
-                    emoji = "⛈"
+                    weather_emoji = "⛈"
                 else:
-                    emoji = "🌡"
+                    weather_emoji = "🌡"
+                
+                # Получаем эмодзи для ветра и влажности
+                wind_emoji = get_wind_emoji(wind_speed)
+                humidity_emoji = get_humidity_emoji(humidity)
+                wind_dir = get_wind_direction(wind_deg)
                 
                 # Совет по одежде
                 if temp < 10:
@@ -142,19 +180,99 @@ async def get_weather(city_or_coords):
                 if w_id < 600 and w_id >= 200:
                     advice += " И возьмите зонт! ☔️"
                 
-                # ИСПРАВЛЕНО: теперь возвращаем кортеж из 4 элементов
-                report = f"{emoji} <b>{name}</b>\n🌡 {temp}°C, {desc.capitalize()}\n\n💡 {advice}"
-                return (report, name, tz_offset, None)  # Добавляем None для сообщения об ошибке
+                # Формируем отчет с дополнительной информацией
+                report = (
+                    f"{weather_emoji} <b>{name}</b>\n"
+                    f"🌡 {temp}°C (ощущается как {feels_like}°C)\n"
+                    f"{desc.capitalize()}\n\n"
+                    f"{humidity_emoji} Влажность: {humidity}%\n"
+                    f"{wind_emoji} Ветер: {wind_speed} м/с, {wind_dir}"
+                )
+                
+                if wind_gust > 0:
+                    report += f" (порывы до {wind_gust} м/с)"
+                
+                report += f"\n📊 Давление: {pressure} мм рт.ст.\n"
+                report += f"☁️ Облачность: {clouds}%\n\n"
+                report += f"💡 {advice}"
+                
+                # Добавляем кнопку для почасового прогноза
+                return (report, name, tz_offset, None, res['coord'])
                 
         except asyncio.TimeoutError:
             logger.error("Таймаут при запросе к API")
-            return None, "❌ Превышено время ожидания ответа от сервера"
+            return None, "❌ Превышено время ожидания ответа от сервера", None, None, None
         except aiohttp.ClientError as e:
             logger.error(f"Ошибка клиента: {e}")
-            return None, f"❌ Ошибка сети: {e}"
+            return None, f"❌ Ошибка сети: {e}", None, None, None
         except Exception as e:
             logger.error(f"Неожиданная ошибка: {e}")
-            return None, f"❌ Неизвестная ошибка: {e}"
+            return None, f"❌ Неизвестная ошибка: {e}", None, None, None
+
+async def get_hourly_forecast(lat, lon):
+    """Получить почасовой прогноз на 24 часа"""
+    url = "https://api.openweathermap.org/data/2.5/forecast"
+    
+    params = {
+        'appid': WEATHER_API_KEY,
+        'lat': lat,
+        'lon': lon,
+        'units': 'metric',
+        'lang': 'ru',
+        'cnt': 8  # Получаем прогноз на 24 часа (каждые 3 часа)
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url, params=params, timeout=10) as resp:
+                if resp.status != 200:
+                    return None, "❌ Не удалось получить прогноз"
+                
+                res = await resp.json()
+                
+                forecast_text = "📅 <b>Почасовой прогноз на 24 часа:</b>\n\n"
+                
+                for item in res['list']:
+                    dt = datetime.datetime.fromtimestamp(item['dt'])
+                    time_str = dt.strftime("%H:%M")
+                    temp = round(item['main']['temp'])
+                    weather = item['weather'][0]
+                    desc = weather['description']
+                    
+                    # Эмодзи для времени суток
+                    if 6 <= dt.hour < 12:
+                        time_emoji = "🌅"
+                    elif 12 <= dt.hour < 18:
+                        time_emoji = "☀️"
+                    elif 18 <= dt.hour < 23:
+                        time_emoji = "🌆"
+                    else:
+                        time_emoji = "🌙"
+                    
+                    # Эмодзи для погоды
+                    weather_id = weather['id']
+                    if weather_id == 800:
+                        weather_emoji = "☀️"
+                    elif weather_id > 800:
+                        weather_emoji = "☁️"
+                    elif weather_id >= 500:
+                        weather_emoji = "🌧"
+                    elif weather_id >= 600:
+                        weather_emoji = "❄️"
+                    elif weather_id >= 300:
+                        weather_emoji = "🌦"
+                    elif weather_id >= 200:
+                        weather_emoji = "⛈"
+                    else:
+                        weather_emoji = "🌡"
+                    
+                    forecast_text += f"{time_emoji} <b>{time_str}</b> {weather_emoji} {temp}°C, {desc}\n"
+                
+                return forecast_text, None
+                
+        except Exception as e:
+            logger.error(f"Ошибка получения прогноза: {e}")
+            return None, "❌ Ошибка получения прогноза"
 
 # --- ОБРАБОТЧИКИ ---
 @dp.message(Command("start"))
@@ -184,12 +302,19 @@ async def handle_location(msg: types.Message):
     coords = {"lat": msg.location.latitude, "lon": msg.location.longitude}
     result = await get_weather(coords)
     
-    # ИСПРАВЛЕНО: обрабатываем новый формат возврата
     if result[0]:  # если есть отчет о погоде
-        report, city, tz, _ = result
+        report, city, tz, _, coord = result
+        
+        # Сохраняем город
         update_user(msg.chat.id, city=city, timezone=tz)
+        
+        # Создаем клавиатуру с кнопкой для почасового прогноза
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="📅 Почасовой прогноз", callback_data=f"forecast_{coord['lat']}_{coord['lon']}")
+        ]])
+        
         await msg.answer(f"📍 Город определен: {city}!\n\n{report}", 
-                        reply_markup=ReplyKeyboardRemove(), 
+                        reply_markup=kb,
                         parse_mode="HTML")
     else:
         error_msg = result[1] if len(result) > 1 else "❌ Ошибка получения погоды"
@@ -203,15 +328,73 @@ async def handle_city(msg: types.Message):
         
     result = await get_weather(msg.text)
     
-    # ИСПРАВЛЕНО: обрабатываем новый формат возврата
     if result[0]:  # если есть отчет о погоде
-        report, city, tz, _ = result
+        report, city, tz, _, coord = result
+        
+        # Сохраняем город
         update_user(msg.chat.id, city=city, timezone=tz)
+        
+        # Создаем клавиатуру с кнопкой для почасового прогноза
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="📅 Почасовой прогноз", callback_data=f"forecast_{coord['lat']}_{coord['lon']}")
+        ]])
+        
         await msg.answer(f"✅ Город {city} сохранен!\n\n{report}", 
+                        reply_markup=kb,
                         parse_mode="HTML")
     else:
         error_msg = result[1] if len(result) > 1 else "❌ Город не найден"
         await msg.answer(f"{error_msg}\nНапиши, например: Москва")
+
+@dp.callback_query(F.data.startswith("forecast_"))
+async def show_forecast(call: types.CallbackQuery):
+    """Показать почасовой прогноз"""
+    await call.answer("Загружаю прогноз...")
+    
+    # Извлекаем координаты из callback_data
+    _, lat, lon = call.data.split('_')
+    lat, lon = float(lat), float(lon)
+    
+    forecast, error = await get_hourly_forecast(lat, lon)
+    
+    if forecast:
+        # Добавляем кнопку "Назад" к текущей погоде
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔙 К текущей погоде", callback_data=f"back_{lat}_{lon}")
+        ]])
+        
+        await call.message.edit_text(forecast, 
+                                    reply_markup=kb,
+                                    parse_mode="HTML")
+    else:
+        await call.message.answer(error or "❌ Не удалось получить прогноз")
+
+@dp.callback_query(F.data.startswith("back_"))
+async def back_to_current(call: types.CallbackQuery):
+    """Вернуться к текущей погоде"""
+    await call.answer()
+    
+    # Извлекаем координаты
+    _, lat, lon = call.data.split('_')
+    lat, lon = float(lat), float(lon)
+    
+    # Получаем текущую погоду
+    coords = {"lat": lat, "lon": lon}
+    result = await get_weather(coords)
+    
+    if result[0]:
+        report, city, tz, _, coord = result
+        
+        # Создаем клавиатуру с кнопкой для почасового прогноза
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="📅 Почасовой прогноз", callback_data=f"forecast_{coord['lat']}_{coord['lon']}")
+        ]])
+        
+        await call.message.edit_text(f"📍 {city}\n\n{report}", 
+                                    reply_markup=kb,
+                                    parse_mode="HTML")
+    else:
+        await call.message.edit_text("❌ Не удалось получить погоду")
 
 # --- РАССЫЛКА ПО МЕСТНОМУ ВРЕМЕНИ ---
 async def mailing():
@@ -239,9 +422,18 @@ async def mailing():
                         result = await get_weather(city)
                         
                         if result[0]:  # если есть отчет о погоде
-                            report, _, _, _ = result
+                            report, _, _, _, coord = result
+                            
+                            # Добавляем кнопку для почасового прогноза
+                            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                                InlineKeyboardButton(text="📅 Почасовой прогноз", callback_data=f"forecast_{coord['lat']}_{coord['lon']}")
+                            ]])
+                            
                             try: 
-                                await bot.send_message(u_id, f"☀️ Доброе утро!\n\n{report}", parse_mode="HTML")
+                                await bot.send_message(u_id, 
+                                                      f"☀️ <b>Доброе утро!</b>\n\n{report}", 
+                                                      reply_markup=kb,
+                                                      parse_mode="HTML")
                                 logger.info(f"Успешно отправлено пользователю {u_id}")
                             except Exception as e:
                                 logger.error(f"Не удалось отправить сообщение пользователю {u_id}: {e}")
