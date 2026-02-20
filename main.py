@@ -29,13 +29,12 @@ def update_user(user_id, city=None, time=None):
     if city:
         cur.execute('INSERT INTO users (id, city) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET city=?', (user_id, city, city))
     if time is not None:
-        cur.execute('INSERT INTO users (id, time) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET time=?', (user_id, time, time))
+        cur.execute('INSERT INTO users (id, time) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET time=?', (user_id, int(time), int(time)))
     conn.commit()
     conn.close()
 
-# --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕНО ВСЁ) ---
+# --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕНО С УЧЕТОМ СПИСКА) ---
 async def get_weather(city_or_coords):
-    # ПРАВИЛЬНЫЙ URL: api.openweathermap.org (не просто openweather.org!)
     url = "https://api.openweathermap.org"
     params = {'appid': WEATHER_API_KEY, 'units': 'metric', 'lang': 'ru'}
     
@@ -47,23 +46,23 @@ async def get_weather(city_or_coords):
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(url, params=params) as resp:
+                res = await resp.json()
                 if resp.status != 200:
+                    print(f"API Error {resp.status}: {res}")
                     return None
                 
-                res = await resp.json()
-                
-                # ВНИМАНИЕ: weather — это СПИСОК [ {...} ]
-                w_info = res['weather'][0] 
-                w_id = w_info['id']
+                # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: weather[0]
+                w_data = res['weather'][0] 
+                w_id = w_data['id']
                 temp = round(res['main']['temp'])
-                desc = w_info['description']
+                desc = w_data['description']
                 name = res['name']
                 
                 emoji = "☀️" if w_id == 800 else "☁️" if w_id > 800 else "🌧" if w_id >= 500 else "❄️"
                 report = f"{emoji} {name}: {temp}°C, {desc.capitalize()}"
                 return report, name
         except Exception as e:
-            print(f"Ошибка API: {e}")
+            print(f"Ошибка парсинга JSON: {e}")
             return None
 
 # --- КЛАВИАТУРЫ ---
@@ -76,7 +75,7 @@ def get_time_kb():
 
 def get_geo_kb():
     return ReplyKeyboardMarkup(keyboard=[[
-        KeyboardButton(text="📍 Моя локация", request_location=True)
+        KeyboardButton(text="📍 Отправить локацию", request_location=True)
     ]], resize_keyboard=True, one_time_keyboard=True)
 
 # --- ОБРАБОТЧИКИ ---
@@ -87,10 +86,10 @@ async def start(msg: types.Message):
 
 @dp.callback_query(F.data.startswith("set_"))
 async def set_time(call: types.CallbackQuery):
-    t = int(call.data.split("_")[1])
+    t = call.data.split("_")[1]
     update_user(call.from_user.id, time=t)
-    await call.message.edit_text(f"✅ Время рассылки: {t}:00.\nТеперь отправь локацию или напиши город.")
-    await call.message.answer("Жду город...", reply_markup=get_geo_kb())
+    await call.message.edit_text(f"✅ Время установлено на {t}:00.\nТеперь пришли локацию или напиши город.")
+    await call.message.answer("Жду данные...", reply_markup=get_geo_kb())
 
 @dp.message(F.location)
 async def handle_location(msg: types.Message):
@@ -101,7 +100,7 @@ async def handle_location(msg: types.Message):
         update_user(msg.chat.id, city=city_name)
         await msg.answer(f"📍 Город определен: {city_name}!\n\n{report}", reply_markup=ReplyKeyboardRemove())
     else:
-        await msg.answer("Не удалось определить город по координатам.")
+        await msg.answer("Не удалось определить город. Попробуй написать название текстом.")
 
 @dp.message()
 async def handle_city(msg: types.Message):
@@ -111,7 +110,7 @@ async def handle_city(msg: types.Message):
         update_user(msg.chat.id, city=city_name)
         await msg.answer(f"Запомнил город {city_name}!\n\n{report}", reply_markup=ReplyKeyboardRemove())
     else:
-        await msg.answer("❌ Город не найден. Попробуй еще раз.")
+        await msg.answer("❌ Город не найден. Напиши, например: Москва")
 
 # --- РАССЫЛКА ---
 async def mailing():
