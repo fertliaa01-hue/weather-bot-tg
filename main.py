@@ -7,12 +7,9 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Настройки
+# Настройки (убедись, что переменные окружения установлены!)
 API_TOKEN = getenv('BOT_TOKEN')
 WEATHER_API_KEY = getenv('WEATHER_API_KEY')
-
-if not API_TOKEN or not WEATHER_API_KEY:
-    exit("Ошибка: Токены не найдены!")
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
@@ -36,23 +33,34 @@ def update_user(user_id, city=None, time=None):
     conn.commit()
     conn.close()
 
-# --- ПОЛУЧЕНИЕ ПОГОДЫ (Async) ---
+# --- ПОЛУЧЕНИЕ ПОГОДЫ ---
 async def get_weather(city):
-    url = f"http://api.openweathermap.org{city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
+    # Исправленный URL и параметры
+    url = f"http://api.openweathermap.org"
+    params = {
+        'q': city,
+        'appid': WEATHER_API_KEY,
+        'units': 'metric',
+        'lang': 'ru'
+    }
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get(url) as resp:
+            async with session.get(url, params=params) as resp:
                 res = await resp.json()
-                if res.get("cod") != 200: return None
+                if res.get("cod") != 200: 
+                    return None
                 
-                w_id = res['weather'][0]['id']
+                # ВНИМАНИЕ: weather — это список [0]
+                w_info = res['weather'][0]
+                w_id = w_info['id']
                 temp = round(res['main']['temp'])
-                desc = res['weather'][0]['description']
+                desc = w_info['description']
                 name = res['name']
                 
                 emoji = "☀️" if w_id == 800 else "☁️" if w_id > 800 else "🌧" if w_id >= 500 else "❄️"
                 return f"{emoji} {name}: {temp}°C, {desc.capitalize()}"
-        except Exception:
+        except Exception as e:
+            print(f"Ошибка API: {e}")
             return None
 
 # --- КЛАВИАТУРА ---
@@ -68,22 +76,22 @@ def get_time_kb():
 @dp.message(Command("start"))
 async def start(msg: types.Message):
     update_user(msg.chat.id, city="Москва")
-    await msg.answer("Привет! Я буду присылать погоду каждое утро.\nВыбери время рассылки (по МСК):", reply_markup=get_time_kb())
+    await msg.answer("Привет! Я погодный бот. Выбери время для утренней рассылки:", reply_markup=get_time_kb())
 
 @dp.callback_query(F.data.startswith("set_"))
 async def set_time(call: types.CallbackQuery):
     time_val = int(call.data.split("_")[1])
     update_user(call.from_user.id, time=time_val)
-    await call.message.edit_text(f"✅ Время установлено на {time_val}:00.\nТеперь напиши название своего города (например: Москва):")
+    await call.message.edit_text(f"✅ Время установлено на {time_val}:00.\nТеперь напиши название своего города:")
 
 @dp.message()
 async def handle_msg(msg: types.Message):
     report = await get_weather(msg.text)
     if report:
         update_user(msg.chat.id, city=msg.text)
-        await msg.answer(f"Запомнил! Город: {msg.text}.\n\nТекущая погода:\n{report}")
+        await msg.answer(f"Город сохранен! Текущая погода там:\n\n{report}\n\nБуду присылать обновления в выбранное время.")
     else:
-        await msg.answer("Не могу найти такой город. Попробуй еще раз!")
+        await msg.answer("❌ Город не найден. Попробуй написать название на русском или английском (например, Москва или Moscow).")
 
 # --- СЕРВИС РАССЫЛКИ ---
 async def mailing_service():
@@ -104,17 +112,12 @@ async def mailing_service():
                         await bot.send_message(user_id, f"Доброе утро! Прогноз на сегодня:\n{weather}")
                     except Exception:
                         pass 
-        await asyncio.sleep(60) # Спим минуту до следующей проверки
+        await asyncio.sleep(60)
 
-# --- ЗАПУСК ---
 async def main():
     init_db()
-    # Запуск планировщика "в фоне"
     asyncio.create_task(mailing_service())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("Бот выключен")
+    asyncio.run(main())
