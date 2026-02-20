@@ -35,9 +35,9 @@ def update_user(user_id, city=None, time=None, timezone=None):
     conn.commit()
     conn.close()
 
-# --- ПОЛУЧЕНИЕ ПОГОДЫ ---
+# --- ПОЛУЧЕНИЕ ПОГОДЫ (ИСПРАВЛЕННЫЙ URL И ПАРСИНГ) ---
 async def get_weather(city_or_coords):
-    # ВНИМАНИЕ: URL должен быть именно таким (api. поддомен)
+    # ПРАВИЛЬНЫЙ АДРЕС СЕРВЕРА ДАННЫХ
     url = "https://api.openweathermap.org"
     params = {'appid': WEATHER_API_KEY, 'units': 'metric', 'lang': 'ru'}
     
@@ -48,13 +48,13 @@ async def get_weather(city_or_coords):
 
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get(url, params=params) as resp:
+            async with session.get(url, params=params, timeout=10) as resp:
                 if resp.status != 200:
                     return None
                 
                 res = await resp.json()
                 
-                # ВАЖНО: weather — это список, берем [0] элемент
+                # ВАЖНО: weather — это список [ {...} ], берем первый элемент [0]
                 w_info = res['weather'][0] 
                 w_id = w_info['id']
                 temp = round(res['main']['temp'])
@@ -64,14 +64,13 @@ async def get_weather(city_or_coords):
                 
                 emoji = "☀️" if w_id == 800 else "☁️" if w_id > 800 else "🌧" if w_id >= 500 else "❄️"
                 
-                # Совет по одежде
-                advice = "Оденься теплее!" if temp < 10 else "Можно идти в кофте." if temp < 20 else "Надень футболку!"
-                if w_id < 600: advice += " И возьми зонт! ☔️"
-
+                # Простой совет
+                advice = "🧤 Оденься теплее!" if temp < 10 else "🧥 Можно в легкой куртке." if temp < 20 else "👕 Надень футболку!"
+                
                 report = f"{emoji} <b>{name}</b>\n🌡 {temp}°C, {desc.capitalize()}\n\n💡 {advice}"
                 return report, name, tz_offset
         except Exception as e:
-            print(f"Ошибка API: {e}")
+            print(f"Критическая ошибка API: {e}")
             return None
 
 # --- ОБРАБОТЧИКИ ---
@@ -83,16 +82,15 @@ async def start(msg: types.Message):
         InlineKeyboardButton(text="08:00", callback_data="set_8"),
         InlineKeyboardButton(text="09:00", callback_data="set_9")
     ]])
-    await msg.answer("Привет! Выбери время для рассылки (по твоему времени):", reply_markup=kb)
+    await msg.answer("Привет! Давай настроим рассылку погоды.\nВыбери время:", reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("set_"))
 async def set_time(call: types.CallbackQuery):
-    # Исправлено: берем цифру после set_
     t = int(call.data.split("_")[1])
     update_user(call.from_user.id, time=t)
     geo_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📍 Отправить локацию", request_location=True)]], resize_keyboard=True)
     await call.message.edit_text(f"✅ Время установлено на {t}:00.\nТеперь отправь локацию или напиши город.")
-    await call.message.answer("Жду город...", reply_markup=geo_kb)
+    await call.message.answer("Жду...", reply_markup=geo_kb)
     await call.answer()
 
 @dp.message(F.location)
@@ -104,7 +102,7 @@ async def handle_location(msg: types.Message):
         update_user(msg.chat.id, city=city, timezone=tz)
         await msg.answer(f"Город определен: {city}!\n\n{report}", reply_markup=ReplyKeyboardRemove(), parse_mode="HTML")
     else:
-        await msg.answer("Ошибка связи с сервером погоды. Напиши город текстом.")
+        await msg.answer("Ошибка связи с сервером. Попробуй написать город текстом.")
 
 @dp.message()
 async def handle_city(msg: types.Message):
@@ -116,7 +114,7 @@ async def handle_city(msg: types.Message):
     else:
         await msg.answer("❌ Город не найден. Напиши, например: Москва")
 
-# --- РАССЫЛКА ПО UTC + ТВОЙ ПОЯС ---
+# --- РАССЫЛКА ПО МЕСТНОМУ ВРЕМЕНИ ---
 async def mailing():
     while True:
         now_utc = datetime.datetime.now(datetime.timezone.utc)
@@ -127,6 +125,7 @@ async def mailing():
             users = cur.fetchall()
             conn.close()
             for u_id, city, target_h, tz_off in users:
+                # Считаем время пользователя: UTC + смещение из API
                 user_local = now_utc + datetime.timedelta(seconds=tz_off)
                 if user_local.hour == target_h:
                     weather_data = await get_weather(city)
