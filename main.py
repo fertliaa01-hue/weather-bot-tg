@@ -342,7 +342,6 @@ async def get_geomagnetic_data():
             logger.error(f"Ошибка при получении геомагнитных данных: {e}")
             return None
 
-# ИСПРАВЛЕНО: Разделяем получение данных и форматирование отчета
 async def get_weather_data(city_or_coords):
     """Получить данные о погоде без форматирования"""
     
@@ -372,7 +371,7 @@ async def get_weather_data(city_or_coords):
             return None, f"❌ Ошибка: {e}"
 
 def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, uv_desc, uv_advice):
-    """Форматировать полный отчет о погоде"""
+    """Форматировать полный отчет о погоде с восходом и закатом"""
     
     now = datetime.datetime.now()
     hour = now.hour
@@ -392,6 +391,15 @@ def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, u
     wind_deg = weather_data['wind'].get('deg', 0)
     wind_gust = weather_data['wind'].get('gust', 0)
     clouds = weather_data['clouds']['all']
+    
+    # НОВОЕ: Получаем время восхода и заката
+    sunrise_timestamp = weather_data['sys']['sunrise']
+    sunset_timestamp = weather_data['sys']['sunset']
+    timezone_offset = weather_data['timezone']
+    
+    # Конвертируем UTC в местное время
+    sunrise_time = datetime.datetime.fromtimestamp(sunrise_timestamp + timezone_offset).strftime("%H:%M")
+    sunset_time = datetime.datetime.fromtimestamp(sunset_timestamp + timezone_offset).strftime("%H:%M")
     
     # Выбор эмодзи для погоды
     if w_id == 800:
@@ -413,6 +421,10 @@ def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, u
     wind_emoji = get_wind_emoji(wind_speed)
     humidity_emoji = get_humidity_emoji(humidity)
     wind_dir = get_wind_direction(wind_deg)
+    
+    # НОВОЕ: Определяем, день сейчас или ночь
+    current_local_time = now.timestamp() + timezone_offset
+    is_day = sunrise_timestamp < current_local_time < sunset_timestamp
     
     # Формируем UV строку
     if 6 <= hour <= 20:
@@ -449,6 +461,9 @@ def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, u
     if w_id < 600 and w_id >= 200:
         advice += " И возьмите зонт! ☔️"
     
+    # НОВОЕ: Добавляем информацию о восходе и закате
+    sun_text = f"\n\n🌅 <b>Восход и закат:</b>\n🌄 Восход: {sunrise_time}\n🌇 Закат: {sunset_time}"
+    
     # Формируем полный отчет
     report = (
         f"{weather_emoji} <b>{name}</b>\n"
@@ -466,6 +481,7 @@ def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, u
     report += uv_text
     report += magnet_text
     report += moon_text
+    report += sun_text  # НОВОЕ: Добавляем информацию о восходе/закате
     report += f"\n\n💡 {advice}"
     
     return report
@@ -480,7 +496,7 @@ async def get_weather_with_details(city_or_coords):
         return None, error or "❌ Не удалось получить данные", None, None, None
     
     try:
-        # Получаем дополнительные данные
+        # Получаем текущее время для расчета UV
         now = datetime.datetime.now()
         hour = now.hour
         clouds = weather_data['clouds']['all']
@@ -633,6 +649,7 @@ async def help_cmd(msg: types.Message):
 • UV-индекс (оценка)
 • Магнитные бури
 • Фаза луны
+• Восход и закат
 • Советы по одежде
     """
     await msg.answer(help_text, parse_mode="HTML")
