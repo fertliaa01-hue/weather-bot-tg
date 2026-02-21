@@ -371,6 +371,7 @@ async def get_weather_data(city_or_coords):
         except Exception as e:
             return None, f"❌ Ошибка: {e}"
 
+# ИЗМЕНЕНО: Заменили UV на ветер в почасовом прогнозе
 async def get_hourly_forecast(lat, lon):
     """Получить почасовой прогноз на 24 часа через Forecast 5 API"""
     url = "https://api.openweathermap.org/data/2.5/forecast"
@@ -411,10 +412,10 @@ async def get_hourly_forecast(lat, lon):
                     weather = item['weather'][0]
                     desc = weather['description']
                     
-                    # В Forecast API нет UV-индекса, используем оценку
-                    hour = dt.hour
-                    clouds = item['clouds']['all']
-                    estimated_uvi = estimate_uv_from_sun(hour, clouds)
+                    # Получаем данные о ветре
+                    wind_speed = item['wind']['speed']
+                    wind_deg = item['wind'].get('deg', 0)
+                    wind_gust = item['wind'].get('gust', 0)
                     
                     # Эмодзи для времени суток
                     if 6 <= dt.hour < 12:
@@ -443,17 +444,16 @@ async def get_hourly_forecast(lat, lon):
                     else:
                         weather_emoji = "🌡"
                     
-                    # Эмодзи для UV (оценка)
-                    if estimated_uvi <= 2:
-                        uv_emoji = "☀️"
-                    elif estimated_uvi <= 5:
-                        uv_emoji = "☀️☀️"
-                    elif estimated_uvi <= 7:
-                        uv_emoji = "☀️☀️☀️"
-                    else:
-                        uv_emoji = "☀️☀️☀️☀️"
+                    # Эмодзи для ветра
+                    wind_emoji = get_wind_emoji(wind_speed)
+                    wind_dir = get_wind_direction(wind_deg)
                     
-                    forecast_lines.append(f"{time_emoji} <b>{time_str}</b> {weather_emoji} {temp}°C, {desc} | UV: ~{estimated_uvi:.1f} {uv_emoji}")
+                    # Формируем строку с ветром
+                    wind_info = f"{wind_emoji} {wind_speed} м/с, {wind_dir}"
+                    if wind_gust > 0:
+                        wind_info += f" (порывы до {wind_gust} м/с)"
+                    
+                    forecast_lines.append(f"{time_emoji} <b>{time_str}</b> {weather_emoji} {temp}°C, {desc}\n   └ {wind_info}")
                 
                 logger.info(f"Сформировано {len(forecast_lines)} строк прогноза")
                 return forecast_lines, None
@@ -465,6 +465,7 @@ async def get_hourly_forecast(lat, lon):
             logger.error(f"Ошибка получения прогноза: {e}")
             return None, f"❌ Ошибка получения прогноза: {e}"
 
+# ИЗМЕНЕНО: Добавлен прогноз магнитных бурь на завтра
 async def get_tomorrow_forecast(lat, lon):
     """Получить прогноз на завтра"""
     url = "https://api.openweathermap.org/data/2.5/forecast"
@@ -515,15 +516,25 @@ async def get_tomorrow_forecast(lat, lon):
                     weather = closest_item['weather'][0]
                     desc = weather['description']
                     
+                    # Данные о ветре
+                    wind_speed = closest_item['wind']['speed']
+                    wind_deg = closest_item['wind'].get('deg', 0)
+                    wind_dir = get_wind_direction(wind_deg)
+                    wind_emoji = get_wind_emoji(wind_speed)
+                    
                     # Эмодзи для времени суток
                     if 6 <= dt.hour < 12:
                         time_emoji = "🌅"
+                        time_name = "Утро"
                     elif 12 <= dt.hour < 18:
                         time_emoji = "☀️"
+                        time_name = "День"
                     elif 18 <= dt.hour < 23:
                         time_emoji = "🌆"
+                        time_name = "Вечер"
                     else:
                         time_emoji = "🌙"
+                        time_name = "Ночь"
                     
                     # Эмодзи для погоды
                     weather_id = weather['id']
@@ -542,19 +553,31 @@ async def get_tomorrow_forecast(lat, lon):
                     else:
                         weather_emoji = "🌡"
                     
-                    forecast_lines.append(f"{time_emoji} <b>{time_str}</b> {weather_emoji} {temp}°C, {desc}")
+                    forecast_lines.append(
+                        f"{time_emoji} <b>{time_name} ({time_str})</b>\n"
+                        f"   ├ {weather_emoji} {temp}°C, {desc}\n"
+                        f"   └ {wind_emoji} Ветер: {wind_speed} м/с, {wind_dir}"
+                    )
                 
                 # Вычисляем среднюю температуру за день
                 avg_temp = round(sum(item['main']['temp'] for item in day_forecasts) / len(day_forecasts))
                 
                 # Вычисляем вероятность осадков и общую погоду
-                rain_prob = max(item.get('pop', 0) for item in day_forecasts) * 100
+                max_pop = max(item.get('pop', 0) for item in day_forecasts) * 100
+                
+                # Получаем прогноз магнитных бурь
+                weekly_kp = await get_weekly_geomagnetic_forecast()
+                tomorrow_kp = weekly_kp[1] if len(weekly_kp) > 1 else 3.0  # Индекс на завтра (второй день)
+                kp_desc, kp_advice = get_kp_description(tomorrow_kp)
+                kp_emoji = get_kp_emoji(tomorrow_kp)
                 
                 result = (
                     f"📅 <b>Прогноз на завтра ({tomorrow.strftime('%d.%m.%Y')}):</b>\n\n"
                     f"{chr(10).join(forecast_lines)}\n\n"
-                    f"🌡 Средняя температура: {avg_temp}°C\n"
-                    f"☔ Вероятность осадков: {rain_prob:.0f}%"
+                    f"📊 <b>Сводка:</b>\n"
+                    f"   ├ 🌡 Средняя температура: {avg_temp}°C\n"
+                    f"   ├ ☔ Вероятность осадков: {max_pop:.0f}%\n"
+                    f"   └ {kp_emoji} Магнитное поле: {kp_desc}"
                 )
                 
                 return result, None
@@ -563,9 +586,9 @@ async def get_tomorrow_forecast(lat, lon):
             logger.error(f"Ошибка получения прогноза на завтра: {e}")
             return None, f"❌ Ошибка получения прогноза: {e}"
 
-# ИЗМЕНЕНО: Функция для получения прогноза на неделю с осадками и магнитными бурями
+# ИЗМЕНЕНО: Расширен до 7 дней и сделано более понятным
 async def get_weekly_forecast(lat, lon):
-    """Получить прогноз на неделю с осадками и магнитными бурями"""
+    """Получить прогноз на 7 дней с осадками и магнитными бурями"""
     url = "https://api.openweathermap.org/data/2.5/forecast"
     
     params = {
@@ -574,7 +597,7 @@ async def get_weekly_forecast(lat, lon):
         'lon': lon,
         'units': 'metric',
         'lang': 'ru',
-        'cnt': 40  # Получаем максимум записей (5 дней по 8 записей)
+        'cnt': 56  # Получаем 56 записей (7 дней по 8 записей)
     }
     
     async with aiohttp.ClientSession() as session:
@@ -597,20 +620,25 @@ async def get_weekly_forecast(lat, lon):
                         daily_forecasts[date_str] = []
                     daily_forecasts[date_str].append(item)
                 
-                # Формируем прогноз на 5 дней
+                # Формируем прогноз на 7 дней
                 forecast_lines = []
-                days_of_week = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+                days_of_week = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
                 
                 # Получаем прогноз магнитных бурь на неделю
                 weekly_kp = await get_weekly_geomagnetic_forecast()
                 
-                for i, (date_str, items) in enumerate(list(daily_forecasts.items())[:5]):
+                day_count = 0
+                for date_str, items in list(daily_forecasts.items())[:7]:
                     # Вычисляем день недели
                     current_date = datetime.datetime.strptime(date_str + f".{datetime.datetime.now().year}", "%d.%m.%Y")
                     weekday = days_of_week[current_date.weekday()]
                     
                     # Средняя температура за день
                     avg_temp = round(sum(item['main']['temp'] for item in items) / len(items))
+                    
+                    # Минимальная и максимальная температура
+                    min_temp = round(min(item['main']['temp'] for item in items))
+                    max_temp = round(max(item['main']['temp'] for item in items))
                     
                     # Максимальная вероятность осадков за день
                     max_pop = max(item.get('pop', 0) for item in items) * 100
@@ -620,30 +648,33 @@ async def get_weekly_forecast(lat, lon):
                     
                     # Преобладающая погода
                     weather_counts = {}
+                    weather_descriptions = {}
                     for item in items:
-                        weather_id = item['weather'][0]['id'] // 100  # Группируем по сотням
+                        weather_id = item['weather'][0]['id'] // 100
+                        weather_desc = item['weather'][0]['description']
                         weather_counts[weather_id] = weather_counts.get(weather_id, 0) + 1
+                        weather_descriptions[weather_id] = weather_desc
                     
                     if weather_counts:
                         main_weather = max(weather_counts, key=weather_counts.get)
                         if main_weather == 8:
                             weather_emoji = "☀️"
-                            weather_desc = "ясно"
+                            weather_desc = weather_descriptions.get(main_weather, "ясно")
                         elif main_weather == 2:
                             weather_emoji = "⛈"
-                            weather_desc = "гроза"
+                            weather_desc = weather_descriptions.get(main_weather, "гроза")
                         elif main_weather == 3:
                             weather_emoji = "🌦"
-                            weather_desc = "морось"
+                            weather_desc = weather_descriptions.get(main_weather, "морось")
                         elif main_weather == 5:
                             weather_emoji = "🌧"
-                            weather_desc = "дождь"
+                            weather_desc = weather_descriptions.get(main_weather, "дождь")
                         elif main_weather == 6:
                             weather_emoji = "❄️"
-                            weather_desc = "снег"
+                            weather_desc = weather_descriptions.get(main_weather, "снег")
                         else:
                             weather_emoji = "☁️"
-                            weather_desc = "облачно"
+                            weather_desc = weather_descriptions.get(main_weather, "облачно")
                     else:
                         weather_emoji = "☀️"
                         weather_desc = "ясно"
@@ -651,47 +682,60 @@ async def get_weekly_forecast(lat, lon):
                     # Индикатор осадков
                     if max_pop < 10:
                         rain_indicator = "☀️"
+                        rain_desc = "без осадков"
                     elif max_pop < 30:
                         rain_indicator = "🌤"
+                        rain_desc = "возможен небольшой дождь"
                     elif max_pop < 50:
                         rain_indicator = "⛅"
+                        rain_desc = "вероятны осадки"
                     elif max_pop < 70:
                         rain_indicator = "🌧"
+                        rain_desc = "дождь"
                     else:
                         rain_indicator = "☔"
+                        rain_desc = "сильный дождь"
                     
-                    # Формируем строку с осадками
-                    rain_info = f"{rain_indicator} {max_pop:.0f}%"
-                    if total_rain > 0:
-                        rain_info += f" ({total_rain:.1f}мм)"
+                    # Информация о ветре (средняя скорость за день)
+                    avg_wind = round(sum(item['wind']['speed'] for item in items) / len(items), 1)
+                    wind_emoji = get_wind_emoji(avg_wind)
                     
-                    # Добавляем информацию о магнитных бурях, если есть
+                    # Добавляем информацию о магнитных бурях
                     kp_info = ""
-                    if weekly_kp and i < len(weekly_kp):
-                        kp = weekly_kp[i]
+                    if day_count < len(weekly_kp):
+                        kp = weekly_kp[day_count]
                         kp_emoji = get_kp_emoji(kp)
                         if kp >= 5:
-                            kp_info = f" {kp_emoji} G{min(kp-4, 5)}"
+                            kp_info = f"{kp_emoji} Магнитная буря G{kp-4}"
+                        elif kp == 4:
+                            kp_info = f"{kp_emoji} Небольшое возмущение"
+                        else:
+                            kp_info = f"{kp_emoji} Спокойно"
                     
                     forecast_lines.append(
-                        f"{weather_emoji} <b>{weekday} {date_str}</b>: {avg_temp}°C\n"
-                        f"   ├ {rain_info} - {weather_desc}\n"
-                        f"   └ {kp_info if kp_info else '🌙 Спокойно'}"
+                        f"📅 <b>{weekday} {date_str}</b>\n"
+                        f"   ├ {weather_emoji} {weather_desc}\n"
+                        f"   ├ 🌡 {min_temp}..{max_temp}°C (ср. {avg_temp}°C)\n"
+                        f"   ├ {rain_indicator} Осадки: {max_pop:.0f}% ({total_rain:.1f}мм)\n"
+                        f"   ├ {wind_emoji} Ветер: {avg_wind} м/с\n"
+                        f"   └ {kp_info}"
                     )
+                    
+                    day_count += 1
                 
                 # Общий прогноз магнитных бурь на неделю
                 magnet_summary = ""
                 if weekly_kp:
-                    max_kp = max(weekly_kp[:5])
+                    max_kp = max(weekly_kp[:7])
                     if max_kp >= 7:
-                        magnet_summary = "\n\n⚠️ <b>На неделе ожидаются сильные магнитные бури!</b>\nМетеозависимым стоит быть осторожными."
+                        magnet_summary = "\n\n⚠️ <b>⚠️ ВНИМАНИЕ! На неделе ожидаются сильные магнитные бури!</b>\nМетеозависимым людям следует быть осторожными."
                     elif max_kp >= 5:
-                        magnet_summary = "\n\n🌙 <b>На неделе возможны слабые магнитные бури.</b>"
+                        magnet_summary = "\n\n🌙 <b>На неделе возможны слабые магнитные бури.</b>\nБудьте внимательны к своему самочувствию."
                     else:
-                        magnet_summary = "\n\n🌙 <b>Геомагнитная обстановка спокойная.</b>"
+                        magnet_summary = "\n\n🌙 <b>Геомагнитная обстановка на неделе спокойная.</b>\nМагнитных бурь не ожидается."
                 
                 result = (
-                    f"📆 <b>Прогноз на 5 дней:</b>\n\n"
+                    f"📆 <b>Прогноз на 7 дней</b>\n\n"
                     f"{chr(10).join(forecast_lines)}"
                     f"{magnet_summary}"
                 )
@@ -702,7 +746,7 @@ async def get_weekly_forecast(lat, lon):
             logger.error(f"Ошибка получения прогноза на неделю: {e}")
             return None, f"❌ Ошибка получения прогноза: {e}"
 
-# НОВОЕ: Функция для получения прогноза магнитных бурь на неделю
+# Функция для получения прогноза магнитных бурь на неделю
 async def get_weekly_geomagnetic_forecast():
     """Получить прогноз магнитных бурь на неделю от NOAA"""
     url = "https://services.swpc.noaa.gov/products/weekly-enlil.json"
