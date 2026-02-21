@@ -385,15 +385,24 @@ async def get_hourly_forecast(lat, lon):
     
     async with aiohttp.ClientSession() as session:
         try:
+            logger.info(f"Запрос почасового прогноза для координат {lat}, {lon}")
             async with session.get(url, params=params, timeout=10) as resp:
                 if resp.status != 200:
-                    return None, "❌ Не удалось получить прогноз"
+                    logger.error(f"Ошибка получения прогноза: статус {resp.status}")
+                    return None, f"❌ Не удалось получить прогноз (код {resp.status})"
                 
                 res = await resp.json()
+                logger.info("Прогноз успешно получен")
                 
                 forecast_lines = []
                 
-                for i, item in enumerate(res['hourly'][:8]):  # Берем 8 записей (24 часа с шагом 3 часа)
+                # Проверяем, есть ли данные
+                if 'hourly' not in res:
+                    logger.error("В ответе нет поля hourly")
+                    return None, "❌ Нет данных почасового прогноза"
+                
+                # Берем первые 8 записей (24 часа с шагом 3 часа)
+                for i, item in enumerate(res['hourly'][:8]):
                     dt = datetime.datetime.fromtimestamp(item['dt'])
                     time_str = dt.strftime("%H:%M")
                     temp = round(item['temp'])
@@ -440,11 +449,15 @@ async def get_hourly_forecast(lat, lon):
                     
                     forecast_lines.append(f"{time_emoji} <b>{time_str}</b> {weather_emoji} {temp}°C, {desc} | UV: {uvi:.1f} {uv_emoji}")
                 
+                logger.info(f"Сформировано {len(forecast_lines)} строк прогноза")
                 return forecast_lines, None
                 
+        except asyncio.TimeoutError:
+            logger.error("Таймаут при запросе прогноза")
+            return None, "❌ Превышено время ожидания прогноза"
         except Exception as e:
             logger.error(f"Ошибка получения прогноза: {e}")
-            return None, "❌ Ошибка получения прогноза"
+            return None, f"❌ Ошибка получения прогноза: {e}"
 
 def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, uv_desc, uv_advice, forecast_lines=None):
     """Форматировать полный отчет о погоде с восходом, закатом и почасовым прогнозом"""
@@ -560,10 +573,14 @@ def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, u
     report += sun_text
     
     # Добавляем почасовой прогноз, если он есть
-    if forecast_lines:
-        report += f"\n\n📅 <b>Почасовой прогноз на 24 часа:</b>\n"
+    if forecast_lines and len(forecast_lines) > 0:
+        logger.info(f"Добавляю {len(forecast_lines)} строк прогноза в отчет")
+        report += f"\n\n📅 <b>Почасовой прогноз на 24 часа:</b>"
         for line in forecast_lines:
             report += f"\n{line}"
+    else:
+        logger.warning("Нет данных прогноза для добавления")
+        report += f"\n\n❌ Почасовой прогноз временно недоступен"
     
     report += f"\n\n💡 {advice}"
     
@@ -576,14 +593,20 @@ async def get_weather_with_details(city_or_coords):
     weather_data, error = await get_weather_data(city_or_coords)
     
     if error or not weather_data:
+        logger.error(f"Ошибка получения данных о погоде: {error}")
         return None, error or "❌ Не удалось получить данные", None, None, None
     
     try:
         # Получаем координаты
         coord = weather_data['coord']
+        logger.info(f"Получены координаты: {coord}")
         
         # Получаем почасовой прогноз
         forecast_lines, forecast_error = await get_hourly_forecast(coord['lat'], coord['lon'])
+        
+        if forecast_error:
+            logger.error(f"Ошибка прогноза: {forecast_error}")
+            forecast_lines = None
         
         # Получаем текущее время для расчета UV
         now = datetime.datetime.now()
@@ -690,7 +713,7 @@ async def weather_cmd(msg: types.Message):
         
         if result[0]:
             report, city, tz, _, coord, full_data = result
-            # ИЗМЕНЕНО: Кнопка теперь для обновления данных
+            # Кнопка для обновления данных
             kb = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
             ]])
@@ -794,7 +817,7 @@ async def handle_location(msg: types.Message):
         # Сохраняем город
         update_user(msg.chat.id, city=city, timezone=tz)
         
-        # ИЗМЕНЕНО: Кнопка теперь для обновления данных
+        # Кнопка для обновления данных
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
         ]])
@@ -821,7 +844,7 @@ async def handle_city(msg: types.Message):
         # Сохраняем город
         update_user(msg.chat.id, city=city, timezone=tz)
         
-        # ИЗМЕНЕНО: Кнопка теперь для обновления данных
+        # Кнопка для обновления данных
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
         ]])
@@ -833,7 +856,7 @@ async def handle_city(msg: types.Message):
         error_msg = result[1] if len(result) > 1 else "❌ Город не найден"
         await msg.answer(f"{error_msg}\nНапиши, например: Москва")
 
-# ИЗМЕНЕНО: Новый обработчик для обновления данных
+# Обработчик для обновления данных
 @dp.callback_query(F.data.startswith("refresh_"))
 async def refresh_weather(call: types.CallbackQuery):
     """Обновить данные о погоде"""
@@ -890,7 +913,7 @@ async def mailing():
                         if result[0]:  # если есть отчет о погоде
                             report, _, _, _, coord, _ = result
                             
-                            # ИЗМЕНЕНО: Кнопка для обновления
+                            # Кнопка для обновления
                             kb = InlineKeyboardMarkup(inline_keyboard=[[
                                 InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
                             ]])
