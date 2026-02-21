@@ -342,8 +342,9 @@ async def get_geomagnetic_data():
             logger.error(f"Ошибка при получении геомагнитных данных: {e}")
             return None
 
-async def get_weather_with_details(city_or_coords):
-    """Получить текущую погоду со всеми деталями"""
+# ИСПРАВЛЕНО: Разделяем получение данных и форматирование отчета
+async def get_weather_data(city_or_coords):
+    """Получить данные о погоде без форматирования"""
     
     url = "https://api.openweathermap.org/data/2.5/weather"
     
@@ -355,153 +356,165 @@ async def get_weather_with_details(city_or_coords):
     
     if isinstance(city_or_coords, dict):
         params.update(city_or_coords)
-        logger.info(f"Запрос погоды по координатам: {city_or_coords}")
     else:
         params['q'] = city_or_coords
-        logger.info(f"Запрос погоды по городу: {city_or_coords}")
 
     async with aiohttp.ClientSession() as session:
         try:
-            logger.info(f"Отправка запроса к {url}")
             async with session.get(url, params=params, timeout=10) as resp:
-                logger.info(f"Статус ответа: {resp.status}")
-                
                 if resp.status != 200:
-                    error_text = await resp.text()
-                    logger.error(f"Ошибка API: статус {resp.status}, ответ: {error_text}")
-                    
-                    if resp.status == 401:
-                        return None, "❌ Неверный API ключ OpenWeatherMap. Проверьте ключ в настройках.", None, None, None
-                    elif resp.status == 404:
-                        return None, "❌ Город не найден. Проверьте название или отправьте локацию.", None, None, None
-                    else:
-                        return None, f"❌ Ошибка сервера погоды (код {resp.status})", None, None, None
+                    return None, f"❌ Ошибка: код {resp.status}"
                 
                 res = await resp.json()
-                logger.info(f"✅ Успешно получены данные для {res.get('name', 'неизвестного города')}")
+                return res, None
                 
-                # Получаем текущее время для расчета UV
-                now = datetime.datetime.now()
-                
-                # Основная информация
-                w_info = res['weather'][0]
-                w_id = w_info['id']
-                temp = round(res['main']['temp'])
-                feels_like = round(res['main']['feels_like'])
-                desc = w_info['description']
-                name = res['name']
-                tz_offset = res.get('timezone', 10800)
-                
-                # Дополнительная информация
-                humidity = res['main']['humidity']
-                pressure = round(res['main']['pressure'] * 0.750062)  # переводим в мм рт. ст.
-                wind_speed = res['wind']['speed']
-                wind_deg = res['wind'].get('deg', 0)
-                wind_gust = res['wind'].get('gust', 0)
-                clouds = res['clouds']['all']
-                
-                # Координаты для прогноза
-                coord = res['coord']
-                
-                # Получаем геомагнитные данные
-                geomagnetic = await get_geomagnetic_data()
-                
-                # Получаем данные о луне
-                moon_data = await get_moon_data()
-                
-                # Оцениваем UV-индекс
-                hour = now.hour
-                estimated_uvi = estimate_uv_from_sun(hour, clouds)
-                uv_desc, uv_advice = get_uv_description(estimated_uvi)
-                
-                # Выбор эмодзи для погоды
-                if w_id == 800:
-                    weather_emoji = "☀️"
-                elif w_id > 800:
-                    weather_emoji = "☁️"
-                elif w_id >= 500:
-                    weather_emoji = "🌧"
-                elif w_id >= 600:
-                    weather_emoji = "❄️"
-                elif w_id >= 300:
-                    weather_emoji = "🌦"
-                elif w_id >= 200:
-                    weather_emoji = "⛈"
-                else:
-                    weather_emoji = "🌡"
-                
-                # Получаем эмодзи для ветра и влажности
-                wind_emoji = get_wind_emoji(wind_speed)
-                humidity_emoji = get_humidity_emoji(humidity)
-                wind_dir = get_wind_direction(wind_deg)
-                
-                # Формируем UV строку
-                if 6 <= hour <= 20:  # Дневное время
-                    uv_text = f"\n☀️ <b>Солнечная активность:</b>\nUV-индекс: {estimated_uvi:.1f} - {uv_desc}\n💡 {uv_advice}"
-                else:
-                    uv_text = "\n🌙 Сейчас ночь, UV-индекс минимальный"
-                
-                # Формируем геомагнитную строку
-                if geomagnetic:
-                    kp, kp_trend = geomagnetic
-                    kp_desc, kp_advice = get_kp_description(kp)
-                    kp_emoji = get_kp_emoji(kp)
-                    magnet_text = f"\n\n🧲 <b>Геомагнитная обстановка:</b>\n{kp_emoji} Kp={kp:.1f} {kp_trend} - {kp_desc}\n💡 {kp_advice}"
-                else:
-                    magnet_text = ""
-                
-                # Формируем строку с луной
-                moon_text = (
-                    f"\n\n🌙 <b>Луна сегодня:</b>\n"
-                    f"{moon_data['emoji']} {moon_data['name']}\n"
-                    f"💡 Освещенность: {moon_data['illumination']}%\n"
-                    f"♈ Знак зодиака: {moon_data['zodiac']}"
-                )
-                
-                # Совет по одежде
-                if temp < 10:
-                    advice = "🧤 Оденьтесь теплее!"
-                elif temp < 20:
-                    advice = "🧥 Можно в легкой куртке."
-                else:
-                    advice = "👕 Наденьте футболку!"
-                
-                # Совет по зонту
-                if w_id < 600 and w_id >= 200:
-                    advice += " И возьмите зонт! ☔️"
-                
-                # Формируем полный отчет
-                report = (
-                    f"{weather_emoji} <b>{name}</b>\n"
-                    f"🌡 {temp}°C (ощущается как {feels_like}°C)\n"
-                    f"{desc.capitalize()}\n\n"
-                    f"{humidity_emoji} Влажность: {humidity}%\n"
-                    f"{wind_emoji} Ветер: {wind_speed} м/с, {wind_dir}"
-                )
-                
-                if wind_gust > 0:
-                    report += f" (порывы до {wind_gust} м/с)"
-                
-                report += f"\n📊 Давление: {pressure} мм рт.ст.\n"
-                report += f"☁️ Облачность: {clouds}%\n"
-                report += uv_text
-                report += magnet_text
-                report += moon_text
-                report += f"\n\n💡 {advice}"
-                
-                return (report, name, tz_offset, None, coord)
-                
-        except asyncio.TimeoutError:
-            logger.error("Таймаут при запросе к API")
-            return None, "❌ Превышено время ожидания ответа от сервера", None, None, None
-        except aiohttp.ClientError as e:
-            logger.error(f"Ошибка клиента: {e}")
-            return None, f"❌ Ошибка сети: {e}", None, None, None
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {e}")
-            return None, f"❌ Неизвестная ошибка: {e}", None, None, None
+            return None, f"❌ Ошибка: {e}"
 
-# ИСПРАВЛЕНО: Возвращаем правильный почасовой прогноз как было раньше
+def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, uv_desc, uv_advice):
+    """Форматировать полный отчет о погоде"""
+    
+    now = datetime.datetime.now()
+    hour = now.hour
+    
+    # Основная информация
+    w_info = weather_data['weather'][0]
+    w_id = w_info['id']
+    temp = round(weather_data['main']['temp'])
+    feels_like = round(weather_data['main']['feels_like'])
+    desc = w_info['description']
+    name = weather_data['name']
+    
+    # Дополнительная информация
+    humidity = weather_data['main']['humidity']
+    pressure = round(weather_data['main']['pressure'] * 0.750062)
+    wind_speed = weather_data['wind']['speed']
+    wind_deg = weather_data['wind'].get('deg', 0)
+    wind_gust = weather_data['wind'].get('gust', 0)
+    clouds = weather_data['clouds']['all']
+    
+    # Выбор эмодзи для погоды
+    if w_id == 800:
+        weather_emoji = "☀️"
+    elif w_id > 800:
+        weather_emoji = "☁️"
+    elif w_id >= 500:
+        weather_emoji = "🌧"
+    elif w_id >= 600:
+        weather_emoji = "❄️"
+    elif w_id >= 300:
+        weather_emoji = "🌦"
+    elif w_id >= 200:
+        weather_emoji = "⛈"
+    else:
+        weather_emoji = "🌡"
+    
+    # Получаем эмодзи для ветра и влажности
+    wind_emoji = get_wind_emoji(wind_speed)
+    humidity_emoji = get_humidity_emoji(humidity)
+    wind_dir = get_wind_direction(wind_deg)
+    
+    # Формируем UV строку
+    if 6 <= hour <= 20:
+        uv_text = f"\n☀️ <b>Солнечная активность:</b>\nUV-индекс: {estimated_uvi:.1f} - {uv_desc}\n💡 {uv_advice}"
+    else:
+        uv_text = "\n🌙 Сейчас ночь, UV-индекс минимальный"
+    
+    # Формируем геомагнитную строку
+    if geomagnetic:
+        kp, kp_trend = geomagnetic
+        kp_desc, kp_advice = get_kp_description(kp)
+        kp_emoji = get_kp_emoji(kp)
+        magnet_text = f"\n\n🧲 <b>Геомагнитная обстановка:</b>\n{kp_emoji} Kp={kp:.1f} {kp_trend} - {kp_desc}\n💡 {kp_advice}"
+    else:
+        magnet_text = ""
+    
+    # Формируем строку с луной
+    moon_text = (
+        f"\n\n🌙 <b>Луна сегодня:</b>\n"
+        f"{moon_data['emoji']} {moon_data['name']}\n"
+        f"💡 Освещенность: {moon_data['illumination']}%\n"
+        f"♈ Знак зодиака: {moon_data['zodiac']}"
+    )
+    
+    # Совет по одежде
+    if temp < 10:
+        advice = "🧤 Оденьтесь теплее!"
+    elif temp < 20:
+        advice = "🧥 Можно в легкой куртке."
+    else:
+        advice = "👕 Наденьте футболку!"
+    
+    # Совет по зонту
+    if w_id < 600 and w_id >= 200:
+        advice += " И возьмите зонт! ☔️"
+    
+    # Формируем полный отчет
+    report = (
+        f"{weather_emoji} <b>{name}</b>\n"
+        f"🌡 {temp}°C (ощущается как {feels_like}°C)\n"
+        f"{desc.capitalize()}\n\n"
+        f"{humidity_emoji} Влажность: {humidity}%\n"
+        f"{wind_emoji} Ветер: {wind_speed} м/с, {wind_dir}"
+    )
+    
+    if wind_gust > 0:
+        report += f" (порывы до {wind_gust} м/с)"
+    
+    report += f"\n📊 Давление: {pressure} мм рт.ст.\n"
+    report += f"☁️ Облачность: {clouds}%\n"
+    report += uv_text
+    report += magnet_text
+    report += moon_text
+    report += f"\n\n💡 {advice}"
+    
+    return report
+
+async def get_weather_with_details(city_or_coords):
+    """Получить текущую погоду со всеми деталями"""
+    
+    # Получаем данные о погоде
+    weather_data, error = await get_weather_data(city_or_coords)
+    
+    if error or not weather_data:
+        return None, error or "❌ Не удалось получить данные", None, None, None
+    
+    try:
+        # Получаем дополнительные данные
+        now = datetime.datetime.now()
+        hour = now.hour
+        clouds = weather_data['clouds']['all']
+        
+        # Получаем геомагнитные данные
+        geomagnetic = await get_geomagnetic_data()
+        
+        # Получаем данные о луне
+        moon_data = await get_moon_data()
+        
+        # Оцениваем UV-индекс
+        estimated_uvi = estimate_uv_from_sun(hour, clouds)
+        uv_desc, uv_advice = get_uv_description(estimated_uvi)
+        
+        # Форматируем отчет
+        report = format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, uv_desc, uv_advice)
+        
+        # Сохраняем все данные для возврата
+        full_data = {
+            'weather': weather_data,
+            'moon': moon_data,
+            'geomagnetic': geomagnetic,
+            'uvi': estimated_uvi,
+            'uv_desc': uv_desc,
+            'uv_advice': uv_advice,
+            'report': report
+        }
+        
+        return (report, weather_data['name'], weather_data.get('timezone', 10800), None, weather_data['coord'], full_data)
+        
+    except Exception as e:
+        logger.error(f"Ошибка при обработке данных: {e}")
+        return None, "❌ Ошибка при обработке данных", None, None, None
+
 async def get_hourly_forecast(lat, lon):
     """Получить почасовой прогноз на 24 часа через One Call API"""
     url = "https://api.openweathermap.org/data/3.0/onecall"
@@ -644,7 +657,8 @@ async def weather_cmd(msg: types.Message):
         result = await get_weather_with_details(city)
         
         if result[0]:
-            report, city, tz, _, coord = result
+            report, city, tz, _, coord, full_data = result
+            # Сохраняем полные данные в callback_data (координаты достаточно)
             kb = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="📅 Почасовой прогноз", callback_data=f"forecast_{coord['lat']}_{coord['lon']}")
             ]])
@@ -748,7 +762,7 @@ async def handle_location(msg: types.Message):
     result = await get_weather_with_details(coords)
     
     if result[0]:  # если есть отчет о погоде
-        report, city, tz, _, coord = result
+        report, city, tz, _, coord, full_data = result
         
         # Сохраняем город
         update_user(msg.chat.id, city=city, timezone=tz)
@@ -775,7 +789,7 @@ async def handle_city(msg: types.Message):
     result = await get_weather_with_details(msg.text)
     
     if result[0]:  # если есть отчет о погоде
-        report, city, tz, _, coord = result
+        report, city, tz, _, coord, full_data = result
         
         # Сохраняем город
         update_user(msg.chat.id, city=city, timezone=tz)
@@ -826,12 +840,12 @@ async def back_to_current(call: types.CallbackQuery):
     lat = float(parts[1])
     lon = float(parts[2])
     
-    # Получаем текущую погоду
+    # Получаем текущую погоду заново
     coords = {"lat": lat, "lon": lon}
     result = await get_weather_with_details(coords)
     
     if result[0]:
-        report, city, tz, _, coord = result
+        report, city, tz, _, coord, full_data = result
         
         # Создаем клавиатуру с кнопкой для почасового прогноза
         kb = InlineKeyboardMarkup(inline_keyboard=[[
@@ -870,7 +884,7 @@ async def mailing():
                         result = await get_weather_with_details(city)
                         
                         if result[0]:  # если есть отчет о погоде
-                            report, _, _, _, coord = result
+                            report, _, _, _, coord, _ = result
                             
                             # Добавляем кнопку для почасового прогноза
                             kb = InlineKeyboardMarkup(inline_keyboard=[[
