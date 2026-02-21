@@ -370,9 +370,10 @@ async def get_weather_data(city_or_coords):
         except Exception as e:
             return None, f"❌ Ошибка: {e}"
 
+# ИСПРАВЛЕНО: Используем Forecast 5 API вместо One Call API
 async def get_hourly_forecast(lat, lon):
-    """Получить почасовой прогноз на 24 часа через One Call API"""
-    url = "https://api.openweathermap.org/data/3.0/onecall"
+    """Получить почасовой прогноз на 24 часа через Forecast 5 API"""
+    url = "https://api.openweathermap.org/data/2.5/forecast"
     
     params = {
         'appid': WEATHER_API_KEY,
@@ -380,35 +381,40 @@ async def get_hourly_forecast(lat, lon):
         'lon': lon,
         'units': 'metric',
         'lang': 'ru',
-        'exclude': 'current,minutely,daily'
+        'cnt': 8  # Получаем 8 записей (24 часа с шагом 3 часа)
     }
     
     async with aiohttp.ClientSession() as session:
         try:
-            logger.info(f"Запрос почасового прогноза для координат {lat}, {lon}")
+            logger.info(f"Запрос прогноза для координат {lat}, {lon} через Forecast API")
             async with session.get(url, params=params, timeout=10) as resp:
                 if resp.status != 200:
-                    logger.error(f"Ошибка получения прогноза: статус {resp.status}")
+                    error_text = await resp.text()
+                    logger.error(f"Ошибка получения прогноза: статус {resp.status}, ответ: {error_text}")
                     return None, f"❌ Не удалось получить прогноз (код {resp.status})"
                 
                 res = await resp.json()
-                logger.info("Прогноз успешно получен")
+                logger.info("Прогноз успешно получен через Forecast API")
                 
                 forecast_lines = []
                 
                 # Проверяем, есть ли данные
-                if 'hourly' not in res:
-                    logger.error("В ответе нет поля hourly")
+                if 'list' not in res:
+                    logger.error("В ответе нет поля list")
                     return None, "❌ Нет данных почасового прогноза"
                 
-                # Берем первые 8 записей (24 часа с шагом 3 часа)
-                for i, item in enumerate(res['hourly'][:8]):
+                # Обрабатываем прогнозы
+                for item in res['list']:
                     dt = datetime.datetime.fromtimestamp(item['dt'])
                     time_str = dt.strftime("%H:%M")
-                    temp = round(item['temp'])
+                    temp = round(item['main']['temp'])
                     weather = item['weather'][0]
                     desc = weather['description']
-                    uvi = item.get('uvi', 0)
+                    
+                    # В Forecast API нет UV-индекса, используем оценку
+                    hour = dt.hour
+                    clouds = item['clouds']['all']
+                    estimated_uvi = estimate_uv_from_sun(hour, clouds)
                     
                     # Эмодзи для времени суток
                     if 6 <= dt.hour < 12:
@@ -437,17 +443,17 @@ async def get_hourly_forecast(lat, lon):
                     else:
                         weather_emoji = "🌡"
                     
-                    # Эмодзи для UV
-                    if uvi <= 2:
+                    # Эмодзи для UV (оценка)
+                    if estimated_uvi <= 2:
                         uv_emoji = "☀️"
-                    elif uvi <= 5:
+                    elif estimated_uvi <= 5:
                         uv_emoji = "☀️☀️"
-                    elif uvi <= 7:
+                    elif estimated_uvi <= 7:
                         uv_emoji = "☀️☀️☀️"
                     else:
                         uv_emoji = "☀️☀️☀️☀️"
                     
-                    forecast_lines.append(f"{time_emoji} <b>{time_str}</b> {weather_emoji} {temp}°C, {desc} | UV: {uvi:.1f} {uv_emoji}")
+                    forecast_lines.append(f"{time_emoji} <b>{time_str}</b> {weather_emoji} {temp}°C, {desc} | UV: ~{estimated_uvi:.1f} {uv_emoji}")
                 
                 logger.info(f"Сформировано {len(forecast_lines)} строк прогноза")
                 return forecast_lines, None
@@ -580,7 +586,8 @@ def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, u
             report += f"\n{line}"
     else:
         logger.warning("Нет данных прогноза для добавления")
-        report += f"\n\n❌ Почасовой прогноз временно недоступен"
+        # Не добавляем сообщение об ошибке, просто пропускаем прогноз
+        pass
     
     report += f"\n\n💡 {advice}"
     
@@ -687,7 +694,7 @@ async def help_cmd(msg: types.Message):
 • Магнитные бури
 • Фаза луны
 • Восход и закат
-• Почасовой прогноз
+• Почасовой прогноз (если доступен)
 • Советы по одежде
     """
     await msg.answer(help_text, parse_mode="HTML")
