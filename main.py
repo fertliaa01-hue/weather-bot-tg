@@ -465,6 +465,184 @@ async def get_hourly_forecast(lat, lon):
             logger.error(f"Ошибка получения прогноза: {e}")
             return None, f"❌ Ошибка получения прогноза: {e}"
 
+# НОВОЕ: Функция для получения прогноза на завтра
+async def get_tomorrow_forecast(lat, lon):
+    """Получить прогноз на завтра"""
+    url = "https://api.openweathermap.org/data/2.5/forecast"
+    
+    params = {
+        'appid': WEATHER_API_KEY,
+        'lat': lat,
+        'lon': lon,
+        'units': 'metric',
+        'lang': 'ru',
+        'cnt': 16  # Получаем 16 записей (48 часов)
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            logger.info(f"Запрос прогноза на завтра для координат {lat}, {lon}")
+            async with session.get(url, params=params, timeout=10) as resp:
+                if resp.status != 200:
+                    return None, f"❌ Не удалось получить прогноз (код {resp.status})"
+                
+                res = await resp.json()
+                
+                # Определяем завтрашнюю дату
+                tomorrow = datetime.datetime.now() + datetime.timedelta(days=1)
+                tomorrow_date = tomorrow.date()
+                
+                forecast_lines = []
+                day_forecasts = []
+                
+                # Собираем прогнозы на завтра
+                for item in res['list']:
+                    dt = datetime.datetime.fromtimestamp(item['dt'])
+                    if dt.date() == tomorrow_date:
+                        day_forecasts.append(item)
+                
+                if not day_forecasts:
+                    return None, "❌ Нет данных на завтра"
+                
+                # Берем 4 точки в течение дня (утро, день, вечер, ночь)
+                time_slots = [6, 12, 18, 21]  # Часы для выборки
+                
+                for target_hour in time_slots:
+                    # Ищем ближайший прогноз к нужному часу
+                    closest_item = min(day_forecasts, key=lambda x: abs(datetime.datetime.fromtimestamp(x['dt']).hour - target_hour))
+                    dt = datetime.datetime.fromtimestamp(closest_item['dt'])
+                    time_str = dt.strftime("%H:%M")
+                    temp = round(closest_item['main']['temp'])
+                    weather = closest_item['weather'][0]
+                    desc = weather['description']
+                    
+                    # Эмодзи для времени суток
+                    if 6 <= dt.hour < 12:
+                        time_emoji = "🌅"
+                    elif 12 <= dt.hour < 18:
+                        time_emoji = "☀️"
+                    elif 18 <= dt.hour < 23:
+                        time_emoji = "🌆"
+                    else:
+                        time_emoji = "🌙"
+                    
+                    # Эмодзи для погоды
+                    weather_id = weather['id']
+                    if weather_id == 800:
+                        weather_emoji = "☀️"
+                    elif weather_id > 800:
+                        weather_emoji = "☁️"
+                    elif weather_id >= 500:
+                        weather_emoji = "🌧"
+                    elif weather_id >= 600:
+                        weather_emoji = "❄️"
+                    elif weather_id >= 300:
+                        weather_emoji = "🌦"
+                    elif weather_id >= 200:
+                        weather_emoji = "⛈"
+                    else:
+                        weather_emoji = "🌡"
+                    
+                    forecast_lines.append(f"{time_emoji} <b>{time_str}</b> {weather_emoji} {temp}°C, {desc}")
+                
+                # Вычисляем среднюю температуру за день
+                avg_temp = round(sum(item['main']['temp'] for item in day_forecasts) / len(day_forecasts))
+                
+                result = (
+                    f"📅 <b>Прогноз на завтра ({tomorrow.strftime('%d.%m.%Y')}):</b>\n\n"
+                    f"{chr(10).join(forecast_lines)}\n\n"
+                    f"🌡 Средняя температура за день: {avg_temp}°C"
+                )
+                
+                return result, None
+                
+        except Exception as e:
+            logger.error(f"Ошибка получения прогноза на завтра: {e}")
+            return None, f"❌ Ошибка получения прогноза: {e}"
+
+# НОВОЕ: Функция для получения прогноза на неделю
+async def get_weekly_forecast(lat, lon):
+    """Получить прогноз на неделю"""
+    url = "https://api.openweathermap.org/data/2.5/forecast"
+    
+    params = {
+        'appid': WEATHER_API_KEY,
+        'lat': lat,
+        'lon': lon,
+        'units': 'metric',
+        'lang': 'ru',
+        'cnt': 40  # Получаем максимум записей (5 дней по 8 записей)
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            logger.info(f"Запрос прогноза на неделю для координат {lat}, {lon}")
+            async with session.get(url, params=params, timeout=10) as resp:
+                if resp.status != 200:
+                    return None, f"❌ Не удалось получить прогноз (код {resp.status})"
+                
+                res = await resp.json()
+                
+                # Группируем прогнозы по дням
+                daily_forecasts = {}
+                
+                for item in res['list']:
+                    dt = datetime.datetime.fromtimestamp(item['dt'])
+                    date_str = dt.strftime("%d.%m")
+                    
+                    if date_str not in daily_forecasts:
+                        daily_forecasts[date_str] = []
+                    daily_forecasts[date_str].append(item)
+                
+                # Формируем прогноз на 5 дней
+                forecast_lines = []
+                days_of_week = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+                
+                for i, (date_str, items) in enumerate(list(daily_forecasts.items())[:5]):
+                    # Вычисляем день недели
+                    current_date = datetime.datetime.strptime(date_str + f".{datetime.datetime.now().year}", "%d.%m.%Y")
+                    weekday = days_of_week[current_date.weekday()]
+                    
+                    # Средняя температура за день
+                    avg_temp = round(sum(item['main']['temp'] for item in items) / len(items))
+                    
+                    # Преобладающая погода
+                    weather_counts = {}
+                    for item in items:
+                        weather_id = item['weather'][0]['id'] // 100  # Группируем по сотням
+                        weather_counts[weather_id] = weather_counts.get(weather_id, 0) + 1
+                    
+                    if weather_counts:
+                        main_weather = max(weather_counts, key=weather_counts.get)
+                        if main_weather == 8:
+                            weather_emoji = "☀️"
+                        elif main_weather == 2:
+                            weather_emoji = "⛈"
+                        elif main_weather == 3:
+                            weather_emoji = "🌦"
+                        elif main_weather == 5:
+                            weather_emoji = "🌧"
+                        elif main_weather == 6:
+                            weather_emoji = "❄️"
+                        else:
+                            weather_emoji = "☁️"
+                    else:
+                        weather_emoji = "☀️"
+                    
+                    forecast_lines.append(f"{weather_emoji} <b>{weekday} {date_str}</b>: {avg_temp}°C")
+                
+                result = (
+                    f"📆 <b>Прогноз на 5 дней:</b>\n\n"
+                    f"{chr(10).join(forecast_lines)}\n\n"
+                    f"💡 Для более детального прогноза используйте почасовой прогноз"
+                )
+                
+                return result, None
+                
+        except Exception as e:
+            logger.error(f"Ошибка получения прогноза на неделю: {e}")
+            return None, f"❌ Ошибка получения прогноза: {e}"
+
 # НОВОЕ: Расширенная система советов (более 300 вариантов)
 def get_weather_advice(temp, humidity, wind_speed, weather_id, hour, month, is_day, clouds, uvi, kp=None):
     """Получить персонализированный совет по погоде (более 300 комбинаций)"""
@@ -919,7 +1097,7 @@ def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, u
     # Добавляем информацию о восходе и закате
     sun_text = f"\n\n🌅 <b>Восход и закат:</b>\n🌄 Восход: {sunrise_time}\n🌇 Закат: {sunset_time}"
     
-    # НОВОЕ: Получаем персонализированный совет
+    # Получаем персонализированный совет
     advice = get_weather_advice(
         temp=temp,
         humidity=humidity,
@@ -1092,10 +1270,16 @@ async def weather_cmd(msg: types.Message):
         
         if result[0]:
             report, city, tz, _, coord, full_data = result
-            # Кнопка для обновления данных
-            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
-            ]])
+            # ИЗМЕНЕНО: Добавлены кнопки для прогнозов
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
+                ],
+                [
+                    InlineKeyboardButton(text="📅 На завтра", callback_data=f"tomorrow_{coord['lat']}_{coord['lon']}"),
+                    InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
+                ]
+            ])
             await msg.answer(report, reply_markup=kb, parse_mode="HTML")
         else:
             await msg.answer(result[1])
@@ -1196,10 +1380,16 @@ async def handle_location(msg: types.Message):
         # Сохраняем город
         update_user(msg.chat.id, city=city, timezone=tz)
         
-        # Кнопка для обновления данных
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
-        ]])
+        # ИЗМЕНЕНО: Добавлены кнопки для прогнозов
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
+            ],
+            [
+                InlineKeyboardButton(text="📅 На завтра", callback_data=f"tomorrow_{coord['lat']}_{coord['lon']}"),
+                InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
+            ]
+        ])
         
         await msg.answer(f"📍 Город определен: {city}!\n\n{report}", 
                         reply_markup=kb,
@@ -1223,10 +1413,16 @@ async def handle_city(msg: types.Message):
         # Сохраняем город
         update_user(msg.chat.id, city=city, timezone=tz)
         
-        # Кнопка для обновления данных
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
-        ]])
+        # ИЗМЕНЕНО: Добавлены кнопки для прогнозов
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
+            ],
+            [
+                InlineKeyboardButton(text="📅 На завтра", callback_data=f"tomorrow_{coord['lat']}_{coord['lon']}"),
+                InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
+            ]
+        ])
         
         await msg.answer(f"✅ Город {city} сохранен!\n\n{report}", 
                         reply_markup=kb,
@@ -1253,16 +1449,78 @@ async def refresh_weather(call: types.CallbackQuery):
     if result[0]:
         report, city, tz, _, coord, full_data = result
         
-        # Создаем клавиатуру с кнопкой для обновления
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
-        ]])
+        # Создаем клавиатуру с кнопками
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
+            ],
+            [
+                InlineKeyboardButton(text="📅 На завтра", callback_data=f"tomorrow_{coord['lat']}_{coord['lon']}"),
+                InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
+            ]
+        ])
         
         await call.message.edit_text(f"📍 {city}\n\n{report}", 
                                     reply_markup=kb,
                                     parse_mode="HTML")
     else:
         await call.message.edit_text("❌ Не удалось обновить погоду")
+
+# НОВОЕ: Обработчик для прогноза на завтра
+@dp.callback_query(F.data.startswith("tomorrow_"))
+async def show_tomorrow_forecast(call: types.CallbackQuery):
+    """Показать прогноз на завтра"""
+    await call.answer("Загружаю прогноз на завтра...")
+    
+    # Извлекаем координаты из callback_data
+    parts = call.data.split('_')
+    lat = float(parts[1])
+    lon = float(parts[2])
+    
+    # Получаем прогноз на завтра
+    forecast, error = await get_tomorrow_forecast(lat, lon)
+    
+    if forecast:
+        # Создаем клавиатуру для возврата
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔙 К текущей погоде", callback_data=f"refresh_{lat}_{lon}")
+            ]
+        ])
+        
+        await call.message.edit_text(forecast, 
+                                    reply_markup=kb,
+                                    parse_mode="HTML")
+    else:
+        await call.message.answer(error or "❌ Не удалось получить прогноз")
+
+# НОВОЕ: Обработчик для прогноза на неделю
+@dp.callback_query(F.data.startswith("week_"))
+async def show_weekly_forecast(call: types.CallbackQuery):
+    """Показать прогноз на неделю"""
+    await call.answer("Загружаю прогноз на неделю...")
+    
+    # Извлекаем координаты из callback_data
+    parts = call.data.split('_')
+    lat = float(parts[1])
+    lon = float(parts[2])
+    
+    # Получаем прогноз на неделю
+    forecast, error = await get_weekly_forecast(lat, lon)
+    
+    if forecast:
+        # Создаем клавиатуру для возврата
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔙 К текущей погоде", callback_data=f"refresh_{lat}_{lon}")
+            ]
+        ])
+        
+        await call.message.edit_text(forecast, 
+                                    reply_markup=kb,
+                                    parse_mode="HTML")
+    else:
+        await call.message.answer(error or "❌ Не удалось получить прогноз")
 
 # --- РАССЫЛКА ПО МЕСТНОМУ ВРЕМЕНИ ---
 async def mailing():
@@ -1292,10 +1550,16 @@ async def mailing():
                         if result[0]:  # если есть отчет о погоде
                             report, _, _, _, coord, _ = result
                             
-                            # Кнопка для обновления
-                            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                                InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
-                            ]])
+                            # Кнопки для прогнозов
+                            kb = InlineKeyboardMarkup(inline_keyboard=[
+                                [
+                                    InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
+                                ],
+                                [
+                                    InlineKeyboardButton(text="📅 На завтра", callback_data=f"tomorrow_{coord['lat']}_{coord['lon']}"),
+                                    InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
+                                ]
+                            ])
                             
                             try: 
                                 await bot.send_message(u_id, 
