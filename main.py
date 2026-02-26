@@ -57,6 +57,25 @@ def init_db():
     conn.close()
     logger.info("✅ База данных инициализирована")
 
+def migrate_db():
+    """Обновление структуры БД без потери данных"""
+    conn = sqlite3.connect('weather_bot.db')
+    cur = conn.cursor()
+    
+    # Проверяем, есть ли поле zodiac_sign
+    cur.execute("PRAGMA table_info(users)")
+    columns = [col[1] for col in cur.fetchall()]
+    
+    if 'zodiac_sign' not in columns:
+        try:
+            cur.execute("ALTER TABLE users ADD COLUMN zodiac_sign TEXT")
+            logger.info("✅ Поле zodiac_sign добавлено в таблицу users")
+        except Exception as e:
+            logger.error(f"❌ Ошибка добавления поля: {e}")
+    
+    conn.commit()
+    conn.close()
+
 def update_user(user_id, city=None, time=None, timezone=None, zodiac_sign=None):
     conn = sqlite3.connect('weather_bot.db')
     cur = conn.cursor()
@@ -83,6 +102,7 @@ def update_user(user_id, city=None, time=None, timezone=None, zodiac_sign=None):
             cur.execute('UPDATE users SET timezone = ? WHERE id = ?', (int(timezone), user_id))
         if zodiac_sign:
             cur.execute('UPDATE users SET zodiac_sign = ? WHERE id = ?', (zodiac_sign, user_id))
+            logger.info(f"Обновлен знак зодиака для пользователя {user_id}: {zodiac_sign}")
     
     conn.commit()
     conn.close()
@@ -565,7 +585,6 @@ async def get_weather_data(city_or_coords):
         except Exception as e:
             return None, f"❌ Ошибка: {e}"
 
-# ИСПРАВЛЕНО: Ветер округлен до целых единиц
 async def get_hourly_forecast(lat, lon):
     """Получить почасовой прогноз на 24 часа через Forecast 5 API"""
     url = "https://api.openweathermap.org/data/2.5/forecast"
@@ -659,7 +678,6 @@ async def get_hourly_forecast(lat, lon):
             logger.error(f"Ошибка получения прогноза: {e}")
             return None, f"❌ Ошибка получения прогноза: {e}"
 
-# ИСПРАВЛЕНО: Ветер округлен до целых единиц
 async def get_tomorrow_forecast(lat, lon):
     """Получить прогноз на завтра"""
     url = "https://api.openweathermap.org/data/2.5/forecast"
@@ -781,7 +799,6 @@ async def get_tomorrow_forecast(lat, lon):
             logger.error(f"Ошибка получения прогноза на завтра: {e}")
             return None, f"❌ Ошибка получения прогноза: {e}"
 
-# ИСПРАВЛЕНО: Прогноз на неделю с корректным отображением магнитных бурь и округленным ветром
 async def get_weekly_forecast(lat, lon):
     """Получить прогноз на 7 дней с осадками и магнитными бурями"""
     url = "https://api.openweathermap.org/data/2.5/forecast"
@@ -947,7 +964,6 @@ async def get_weekly_forecast(lat, lon):
             logger.error(f"Ошибка получения прогноза на неделю: {e}")
             return None, f"❌ Ошибка получения прогноза: {e}"
 
-# ИСПРАВЛЕНО: Функция для получения прогноза магнитных бурь с корректными значениями
 async def get_weekly_geomagnetic_forecast():
     """Получить прогноз магнитных бурь на неделю от NOAA"""
     url = "https://services.swpc.noaa.gov/products/weekly-enlil.json"
@@ -1358,7 +1374,7 @@ def get_weather_advice(temp, humidity, wind_speed, weather_id, hour, month, is_d
     # Выбираем случайный совет
     return random.choice(advice_pool)
 
-def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, uv_desc, uv_advice, forecast_lines=None):
+def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, uv_desc, uv_advice, forecast_lines=None, zodiac_sign=None):
     """Форматировать полный отчет о погоде с восходом, закатом и почасовым прогнозом"""
     
     now = datetime.datetime.now()
@@ -1486,11 +1502,22 @@ def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, u
     else:
         logger.warning("Нет данных прогноза для добавления")
     
+    # Добавляем информацию о гороскопе
+    if zodiac_sign:
+        sign_data = ZODIAC_SIGNS.get(zodiac_sign)
+        if sign_data:
+            horoscope_note = f"\n\n🔮 <b>Гороскоп для {sign_data['emoji']} {sign_data['name']}:</b>\nНажмите кнопку ниже, чтобы узнать свою судьбу!"
+        else:
+            horoscope_note = f"\n\n🔮 <b>Гороскоп:</b>\nНажмите кнопку ниже, чтобы узнать свою судьбу!"
+    else:
+        horoscope_note = f"\n\n🔮 <b>Гороскоп:</b>\nУстановите /zodiac и получайте персональные прогнозы!"
+    
+    report += horoscope_note
     report += f"\n\n💡 <b>Совет дня:</b>\n{advice}"
     
     return report
 
-async def get_weather_with_details(city_or_coords):
+async def get_weather_with_details(city_or_coords, user_id=None):
     """Получить текущую погоду со всеми деталями и почасовым прогнозом"""
     
     # Получаем данные о погоде
@@ -1523,12 +1550,17 @@ async def get_weather_with_details(city_or_coords):
         # Получаем данные о луне
         moon_data = await get_moon_data()
         
+        # Получаем знак зодиака пользователя, если передан user_id
+        zodiac_sign = None
+        if user_id:
+            zodiac_sign = get_user_zodiac(user_id)
+        
         # Оцениваем UV-индекс
         estimated_uvi = estimate_uv_from_sun(hour, clouds)
         uv_desc, uv_advice = get_uv_description(estimated_uvi)
         
-        # Форматируем отчет с прогнозом
-        report = format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, uv_desc, uv_advice, forecast_lines)
+        # Форматируем отчет с прогнозом и знаком зодиака
+        report = format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, uv_desc, uv_advice, forecast_lines, zodiac_sign)
         
         # Сохраняем все данные для возврата
         full_data = {
@@ -1552,6 +1584,7 @@ async def get_weather_with_details(city_or_coords):
 @dp.message(Command("start"))
 async def start(msg: types.Message):
     init_db()
+    migrate_db()
     
     # Проверяем API ключ при старте
     api_ok, api_message = await test_api_key()
@@ -1616,11 +1649,12 @@ async def weather_cmd(msg: types.Message):
     if result and result[0]:
         city = result[0]
         await msg.answer(f"🔄 Получаю погоду для {city}...")
-        result = await get_weather_with_details(city)
+        # Передаем user_id для получения знака зодиака
+        result = await get_weather_with_details(city, msg.from_user.id)
         
         if result[0]:
             report, city, tz, _, coord, full_data = result
-            # Кнопки для прогнозов
+            # Кнопки для прогнозов и гороскопа
             kb = InlineKeyboardMarkup(inline_keyboard=[
                 [
                     InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
@@ -1628,6 +1662,9 @@ async def weather_cmd(msg: types.Message):
                 [
                     InlineKeyboardButton(text="📅 На завтра", callback_data=f"tomorrow_{coord['lat']}_{coord['lon']}"),
                     InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
+                ],
+                [
+                    InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
                 ]
             ])
             await msg.answer(report, reply_markup=kb, parse_mode="HTML")
@@ -1710,13 +1747,20 @@ async def moon_info(msg: types.Message):
 async def horoscope_menu(msg: types.Message):
     """Меню гороскопа с выбором знака"""
     
+    # Получаем знак пользователя, если сохранен
+    user_zodiac = get_user_zodiac(msg.from_user.id)
+    
     # Создаем клавиатуру со всеми знаками зодиака
     zodiac_buttons = []
     row = []
     
     for i, (sign_en, sign_data) in enumerate(ZODIAC_SIGNS.items()):
+        button_text = f"{sign_data['emoji']} {sign_data['name']}"
+        if user_zodiac == sign_en:
+            button_text = f"⭐ {button_text}"  # Отмечаем сохраненный знак звездочкой
+            
         button = InlineKeyboardButton(
-            text=f"{sign_data['emoji']} {sign_data['name']}", 
+            text=button_text, 
             callback_data=f"horoscope_{sign_en}"
         )
         row.append(button)
@@ -1730,7 +1774,7 @@ async def horoscope_menu(msg: types.Message):
     if row:
         zodiac_buttons.append(row)
     
-    # Добавляем кнопку для выбора периода
+    # Добавляем кнопки для выбора периода
     zodiac_buttons.append([
         InlineKeyboardButton(text="📅 Сегодня", callback_data="horoscope_period_today"),
         InlineKeyboardButton(text="🔮 Завтра", callback_data="horoscope_period_tomorrow"),
@@ -1738,9 +1782,10 @@ async def horoscope_menu(msg: types.Message):
     ])
     
     # Добавляем кнопку для моего знака
-    zodiac_buttons.append([
-        InlineKeyboardButton(text="⭐ Мой знак", callback_data="horoscope_mine")
-    ])
+    if user_zodiac:
+        zodiac_buttons.append([
+            InlineKeyboardButton(text="⭐ Мой знак", callback_data="horoscope_mine")
+        ])
     
     kb = InlineKeyboardMarkup(inline_keyboard=zodiac_buttons)
     
@@ -1871,6 +1916,12 @@ async def process_horoscope(call: types.CallbackQuery):
         await show_horoscope_for_sign(call, sign_en, "today")
         return
 
+@dp.callback_query(F.data == "horoscope_menu")
+async def horoscope_button(call: types.CallbackQuery):
+    """Обработчик кнопки Гороскоп"""
+    await call.answer()
+    await horoscope_menu(call.message)
+
 def create_zodiac_keyboard(period):
     """Создать клавиатуру со знаками зодиака для выбранного периода"""
     zodiac_buttons = []
@@ -1966,15 +2017,16 @@ async def set_time(call: types.CallbackQuery):
 async def handle_location(msg: types.Message):
     await msg.answer("🔄 Получаю погоду по вашему местоположению...")
     coords = {"lat": msg.location.latitude, "lon": msg.location.longitude}
-    result = await get_weather_with_details(coords)
+    # Передаем user_id
+    result = await get_weather_with_details(coords, msg.from_user.id)
     
-    if result[0]:  # если есть отчет о погоде
+    if result[0]:
         report, city, tz, _, coord, full_data = result
         
         # Сохраняем город
         update_user(msg.chat.id, city=city, timezone=tz)
         
-        # Кнопки для прогнозов
+        # Кнопки для прогнозов и гороскопа
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
@@ -1982,6 +2034,9 @@ async def handle_location(msg: types.Message):
             [
                 InlineKeyboardButton(text="📅 На завтра", callback_data=f"tomorrow_{coord['lat']}_{coord['lon']}"),
                 InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
+            ],
+            [
+                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
             ]
         ])
         
@@ -1999,15 +2054,16 @@ async def handle_city(msg: types.Message):
         return
     
     await msg.answer(f"🔄 Ищу город {msg.text}...")
-    result = await get_weather_with_details(msg.text)
+    # Передаем user_id
+    result = await get_weather_with_details(msg.text, msg.from_user.id)
     
-    if result[0]:  # если есть отчет о погоде
+    if result[0]:
         report, city, tz, _, coord, full_data = result
         
         # Сохраняем город
         update_user(msg.chat.id, city=city, timezone=tz)
         
-        # Кнопки для прогнозов
+        # Кнопки для прогнозов и гороскопа
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
@@ -2015,6 +2071,9 @@ async def handle_city(msg: types.Message):
             [
                 InlineKeyboardButton(text="📅 На завтра", callback_data=f"tomorrow_{coord['lat']}_{coord['lon']}"),
                 InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
+            ],
+            [
+                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
             ]
         ])
         
@@ -2036,9 +2095,9 @@ async def refresh_weather(call: types.CallbackQuery):
     lat = float(parts[1])
     lon = float(parts[2])
     
-    # Получаем обновленные данные
+    # Получаем обновленные данные с user_id
     coords = {"lat": lat, "lon": lon}
-    result = await get_weather_with_details(coords)
+    result = await get_weather_with_details(coords, call.from_user.id)
     
     if result[0]:
         report, city, tz, _, coord, full_data = result
@@ -2051,6 +2110,9 @@ async def refresh_weather(call: types.CallbackQuery):
             [
                 InlineKeyboardButton(text="📅 На завтра", callback_data=f"tomorrow_{coord['lat']}_{coord['lon']}"),
                 InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
+            ],
+            [
+                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
             ]
         ])
         
@@ -2079,6 +2141,9 @@ async def show_tomorrow_forecast(call: types.CallbackQuery):
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="🔙 К текущей погоде", callback_data=f"refresh_{lat}_{lon}")
+            ],
+            [
+                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
             ]
         ])
         
@@ -2107,6 +2172,9 @@ async def show_weekly_forecast(call: types.CallbackQuery):
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="🔙 К текущей погоде", callback_data=f"refresh_{lat}_{lon}")
+            ],
+            [
+                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
             ]
         ])
         
@@ -2139,12 +2207,13 @@ async def mailing():
                     user_local = now_utc + datetime.timedelta(seconds=tz_off)
                     if user_local.hour == target_h:
                         logger.info(f"Отправка погоды пользователю {u_id} в {user_local.hour}:00")
-                        result = await get_weather_with_details(city)
+                        # Передаем user_id
+                        result = await get_weather_with_details(city, u_id)
                         
-                        if result[0]:  # если есть отчет о погоде
+                        if result[0]:
                             report, _, _, _, coord, _ = result
                             
-                            # Кнопки для прогнозов
+                            # Кнопки для прогнозов и гороскопа
                             kb = InlineKeyboardMarkup(inline_keyboard=[
                                 [
                                     InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
@@ -2152,6 +2221,9 @@ async def mailing():
                                 [
                                     InlineKeyboardButton(text="📅 На завтра", callback_data=f"tomorrow_{coord['lat']}_{coord['lon']}"),
                                     InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
+                                ],
+                                [
+                                    InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
                                 ]
                             ])
                             
@@ -2164,7 +2236,7 @@ async def mailing():
                             except Exception as e:
                                 logger.error(f"❌ Не удалось отправить сообщение пользователю {u_id}: {e}")
                         else:
-                            logger.error(f"❌ Не удалось получить погоду для пользователя {u_id}: {result[1]}")
+                            logger.error(f"❌ Не удалось получить погоду для пользователя {u_id}")
                 
                 await asyncio.sleep(61)
             await asyncio.sleep(30)
@@ -2178,6 +2250,7 @@ async def main():
     logger.info("=" * 50)
     
     init_db()
+    migrate_db()
     
     # Проверяем API ключ
     logger.info("\n🔑 ПРОВЕРКА API КЛЮЧА OPENWEATHERMAP:")
