@@ -132,22 +132,6 @@ ZODIAC_SIGNS = {
     'pisces': {'name': 'Рыбы', 'emoji': '♓', 'dates': '19 февраля - 20 марта'}
 }
 
-# Соответствие английских названий русским
-ZODIAC_EN_TO_RU = {
-    'aries': 'овен',
-    'taurus': 'телец',
-    'gemini': 'близнецы',
-    'cancer': 'рак',
-    'leo': 'лев',
-    'virgo': 'дева',
-    'libra': 'весы',
-    'scorpio': 'скорпион',
-    'sagittarius': 'стрелец',
-    'capricorn': 'козерог',
-    'aquarius': 'водолей',
-    'pisces': 'рыбы'
-}
-
 async def get_horoscope(sign, timeframe='today'):
     """
     Получить гороскоп для знака зодиака через aztro API
@@ -295,42 +279,6 @@ def get_horoscope_advice(sign_name, description):
         ])
     
     return random.choice(advice_pool)
-
-def get_zodiac_sign_by_date(birth_date):
-    """Определить знак зодиака по дате рождения"""
-    if isinstance(birth_date, str):
-        try:
-            birth_date = datetime.datetime.strptime(birth_date, "%d.%m").date()
-        except:
-            return None
-    
-    month = birth_date.month
-    day = birth_date.day
-    
-    if (month == 3 and day >= 21) or (month == 4 and day <= 19):
-        return 'aries'
-    elif (month == 4 and day >= 20) or (month == 5 and day <= 20):
-        return 'taurus'
-    elif (month == 5 and day >= 21) or (month == 6 and day <= 20):
-        return 'gemini'
-    elif (month == 6 and day >= 21) or (month == 7 and day <= 22):
-        return 'cancer'
-    elif (month == 7 and day >= 23) or (month == 8 and day <= 22):
-        return 'leo'
-    elif (month == 8 and day >= 23) or (month == 9 and day <= 22):
-        return 'virgo'
-    elif (month == 9 and day >= 23) or (month == 10 and day <= 22):
-        return 'libra'
-    elif (month == 10 and day >= 23) or (month == 11 and day <= 21):
-        return 'scorpio'
-    elif (month == 11 and day >= 22) or (month == 12 and day <= 21):
-        return 'sagittarius'
-    elif (month == 12 and day >= 22) or (month == 1 and day <= 19):
-        return 'capricorn'
-    elif (month == 1 and day >= 20) or (month == 2 and day <= 18):
-        return 'aquarius'
-    else:
-        return 'pisces'
 
 # --- ФУНКЦИИ ДЛЯ ПОГОДЫ ---
 def get_wind_direction(deg):
@@ -603,21 +551,15 @@ async def get_hourly_forecast(lat, lon):
             logger.info(f"Запрос прогноза для координат {lat}, {lon} через Forecast API")
             async with session.get(url, params=params, timeout=10) as resp:
                 if resp.status != 200:
-                    error_text = await resp.text()
-                    logger.error(f"Ошибка получения прогноза: статус {resp.status}, ответ: {error_text}")
                     return None, f"❌ Не удалось получить прогноз (код {resp.status})"
                 
                 res = await resp.json()
-                logger.info("Прогноз успешно получен через Forecast API")
                 
                 forecast_lines = []
                 
-                # Проверяем, есть ли данные
                 if 'list' not in res:
-                    logger.error("В ответе нет поля list")
                     return None, "❌ Нет данных почасового прогноза"
                 
-                # Обрабатываем прогнозы
                 for item in res['list']:
                     dt = datetime.datetime.fromtimestamp(item['dt'])
                     time_str = dt.strftime("%H:%M")
@@ -625,12 +567,9 @@ async def get_hourly_forecast(lat, lon):
                     weather = item['weather'][0]
                     desc = weather['description']
                     
-                    # Получаем данные о ветре и округляем до целых
                     wind_speed = round(item['wind']['speed'])
                     wind_deg = item['wind'].get('deg', 0)
-                    wind_gust = round(item['wind'].get('gust', 0)) if 'gust' in item['wind'] else 0
                     
-                    # Эмодзи для времени суток
                     if 6 <= dt.hour < 12:
                         time_emoji = "🌅"
                     elif 12 <= dt.hour < 18:
@@ -640,7 +579,6 @@ async def get_hourly_forecast(lat, lon):
                     else:
                         time_emoji = "🌙"
                     
-                    # Эмодзи для погоды
                     weather_id = weather['id']
                     if weather_id == 800:
                         weather_emoji = "☀️"
@@ -657,25 +595,16 @@ async def get_hourly_forecast(lat, lon):
                     else:
                         weather_emoji = "🌡"
                     
-                    # Эмодзи для ветра
                     wind_emoji = get_wind_emoji(wind_speed)
                     wind_dir = get_wind_direction(wind_deg)
                     
-                    # Формируем строку с ветром
-                    wind_info = f"{wind_emoji} {wind_speed} м/с, {wind_dir}"
-                    if wind_gust > 0:
-                        wind_info += f" (порывы до {wind_gust} м/с)"
-                    
-                    forecast_lines.append(f"{time_emoji} <b>{time_str}</b> {weather_emoji} {temp}°C, {desc}\n   └ {wind_info}")
+                    forecast_lines.append(f"{time_emoji} <b>{time_str}</b> {weather_emoji} {temp}°C, {desc}\n   └ {wind_emoji} {wind_speed} м/с, {wind_dir}")
                 
-                logger.info(f"Сформировано {len(forecast_lines)} строк прогноза")
                 return forecast_lines, None
                 
         except asyncio.TimeoutError:
-            logger.error("Таймаут при запросе прогноза")
             return None, "❌ Превышено время ожидания прогноза"
         except Exception as e:
-            logger.error(f"Ошибка получения прогноза: {e}")
             return None, f"❌ Ошибка получения прогноза: {e}"
 
 async def get_tomorrow_forecast(lat, lon):
@@ -688,26 +617,23 @@ async def get_tomorrow_forecast(lat, lon):
         'lon': lon,
         'units': 'metric',
         'lang': 'ru',
-        'cnt': 16  # Получаем 16 записей (48 часов)
+        'cnt': 16
     }
     
     async with aiohttp.ClientSession() as session:
         try:
-            logger.info(f"Запрос прогноза на завтра для координат {lat}, {lon}")
             async with session.get(url, params=params, timeout=10) as resp:
                 if resp.status != 200:
                     return None, f"❌ Не удалось получить прогноз (код {resp.status})"
                 
                 res = await resp.json()
                 
-                # Определяем завтрашнюю дату
                 tomorrow = datetime.datetime.now() + datetime.timedelta(days=1)
                 tomorrow_date = tomorrow.date()
                 
                 forecast_lines = []
                 day_forecasts = []
                 
-                # Собираем прогнозы на завтра
                 for item in res['list']:
                     dt = datetime.datetime.fromtimestamp(item['dt'])
                     if dt.date() == tomorrow_date:
@@ -716,11 +642,9 @@ async def get_tomorrow_forecast(lat, lon):
                 if not day_forecasts:
                     return None, "❌ Нет данных на завтра"
                 
-                # Берем 4 точки в течение дня (утро, день, вечер, ночь)
-                time_slots = [6, 12, 18, 21]  # Часы для выборки
+                time_slots = [6, 12, 18, 21]
                 
                 for target_hour in time_slots:
-                    # Ищем ближайший прогноз к нужному часу
                     closest_item = min(day_forecasts, key=lambda x: abs(datetime.datetime.fromtimestamp(x['dt']).hour - target_hour))
                     dt = datetime.datetime.fromtimestamp(closest_item['dt'])
                     time_str = dt.strftime("%H:%M")
@@ -728,13 +652,11 @@ async def get_tomorrow_forecast(lat, lon):
                     weather = closest_item['weather'][0]
                     desc = weather['description']
                     
-                    # Данные о ветре (округляем до целых)
                     wind_speed = round(closest_item['wind']['speed'])
                     wind_deg = closest_item['wind'].get('deg', 0)
                     wind_dir = get_wind_direction(wind_deg)
                     wind_emoji = get_wind_emoji(wind_speed)
                     
-                    # Эмодзи для времени суток
                     if 6 <= dt.hour < 12:
                         time_emoji = "🌅"
                         time_name = "Утро"
@@ -748,7 +670,6 @@ async def get_tomorrow_forecast(lat, lon):
                         time_emoji = "🌙"
                         time_name = "Ночь"
                     
-                    # Эмодзи для погоды
                     weather_id = weather['id']
                     if weather_id == 800:
                         weather_emoji = "☀️"
@@ -771,36 +692,24 @@ async def get_tomorrow_forecast(lat, lon):
                         f"   └ {wind_emoji} Ветер: {wind_speed} м/с, {wind_dir}"
                     )
                 
-                # Вычисляем среднюю температуру за день
                 avg_temp = round(sum(item['main']['temp'] for item in day_forecasts) / len(day_forecasts))
-                
-                # Вычисляем вероятность осадков и общую погоду
                 max_pop = max(item.get('pop', 0) for item in day_forecasts) * 100
-                
-                # Получаем прогноз магнитных бурь
-                weekly_kp = await get_weekly_geomagnetic_forecast()
-                tomorrow_kp = weekly_kp[1] if len(weekly_kp) > 1 else 3.0  # Индекс на завтра (второй день)
-                kp_rounded = round(tomorrow_kp, 1)
-                kp_desc, _ = get_kp_description(tomorrow_kp)
-                kp_emoji = get_kp_emoji(tomorrow_kp)
                 
                 result = (
                     f"📅 <b>Прогноз на завтра ({tomorrow.strftime('%d.%m.%Y')}):</b>\n\n"
                     f"{chr(10).join(forecast_lines)}\n\n"
                     f"📊 <b>Сводка:</b>\n"
                     f"   ├ 🌡 Средняя температура: {avg_temp}°C\n"
-                    f"   ├ ☔ Вероятность осадков: {max_pop:.0f}%\n"
-                    f"   └ {kp_emoji} Магнитное поле: {kp_desc} (Kp={kp_rounded})"
+                    f"   └ ☔ Вероятность осадков: {max_pop:.0f}%"
                 )
                 
                 return result, None
                 
         except Exception as e:
-            logger.error(f"Ошибка получения прогноза на завтра: {e}")
             return None, f"❌ Ошибка получения прогноза: {e}"
 
 async def get_weekly_forecast(lat, lon):
-    """Получить прогноз на 7 дней с осадками и магнитными бурями"""
+    """Получить прогноз на 7 дней"""
     url = "https://api.openweathermap.org/data/2.5/forecast"
     
     params = {
@@ -809,19 +718,17 @@ async def get_weekly_forecast(lat, lon):
         'lon': lon,
         'units': 'metric',
         'lang': 'ru',
-        'cnt': 56  # Получаем 56 записей (7 дней по 8 записей)
+        'cnt': 56
     }
     
     async with aiohttp.ClientSession() as session:
         try:
-            logger.info(f"Запрос прогноза на неделю для координат {lat}, {lon}")
             async with session.get(url, params=params, timeout=10) as resp:
                 if resp.status != 200:
                     return None, f"❌ Не удалось получить прогноз (код {resp.status})"
                 
                 res = await resp.json()
                 
-                # Группируем прогнозы по дням
                 daily_forecasts = {}
                 
                 for item in res['list']:
@@ -832,556 +739,52 @@ async def get_weekly_forecast(lat, lon):
                         daily_forecasts[date_str] = []
                     daily_forecasts[date_str].append(item)
                 
-                # Формируем прогноз на 7 дней
                 forecast_lines = []
                 days_of_week = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
                 
-                # Получаем прогноз магнитных бурь на неделю
-                weekly_kp = await get_weekly_geomagnetic_forecast()
-                
                 day_count = 0
                 for date_str, items in list(daily_forecasts.items())[:7]:
-                    # Вычисляем день недели
                     current_date = datetime.datetime.strptime(date_str + f".{datetime.datetime.now().year}", "%d.%m.%Y")
                     weekday = days_of_week[current_date.weekday()]
                     
-                    # Средняя температура за день
                     avg_temp = round(sum(item['main']['temp'] for item in items) / len(items))
-                    
-                    # Минимальная и максимальная температура
                     min_temp = round(min(item['main']['temp'] for item in items))
                     max_temp = round(max(item['main']['temp'] for item in items))
-                    
-                    # Максимальная вероятность осадков за день
                     max_pop = max(item.get('pop', 0) for item in items) * 100
                     
-                    # Сумма осадков за день (в мм)
-                    total_rain = sum(item.get('rain', {}).get('3h', 0) for item in items)
-                    
-                    # Преобладающая погода
-                    weather_counts = {}
-                    weather_descriptions = {}
-                    for item in items:
-                        weather_id = item['weather'][0]['id'] // 100
-                        weather_desc = item['weather'][0]['description']
-                        weather_counts[weather_id] = weather_counts.get(weather_id, 0) + 1
-                        weather_descriptions[weather_id] = weather_desc
-                    
-                    if weather_counts:
-                        main_weather = max(weather_counts, key=weather_counts.get)
-                        if main_weather == 8:
-                            weather_emoji = "☀️"
-                            weather_desc = weather_descriptions.get(main_weather, "ясно")
-                        elif main_weather == 2:
-                            weather_emoji = "⛈"
-                            weather_desc = weather_descriptions.get(main_weather, "гроза")
-                        elif main_weather == 3:
-                            weather_emoji = "🌦"
-                            weather_desc = weather_descriptions.get(main_weather, "морось")
-                        elif main_weather == 5:
-                            weather_emoji = "🌧"
-                            weather_desc = weather_descriptions.get(main_weather, "дождь")
-                        elif main_weather == 6:
-                            weather_emoji = "❄️"
-                            weather_desc = weather_descriptions.get(main_weather, "снег")
-                        else:
-                            weather_emoji = "☁️"
-                            weather_desc = weather_descriptions.get(main_weather, "облачно")
-                    else:
-                        weather_emoji = "☀️"
-                        weather_desc = "ясно"
-                    
-                    # Индикатор осадков
-                    if max_pop < 10:
-                        rain_indicator = "☀️"
-                    elif max_pop < 30:
-                        rain_indicator = "🌤"
-                    elif max_pop < 50:
-                        rain_indicator = "⛅"
-                    elif max_pop < 70:
-                        rain_indicator = "🌧"
-                    else:
-                        rain_indicator = "☔"
-                    
-                    # Информация о ветре (средняя скорость за день, округленная до целых)
-                    avg_wind = round(sum(item['wind']['speed'] for item in items) / len(items))
-                    wind_emoji = get_wind_emoji(avg_wind)
-                    
-                    # Добавляем информацию о магнитных бурях с правильным округлением
-                    kp_info = ""
-                    if day_count < len(weekly_kp):
-                        kp = weekly_kp[day_count]
-                        kp_rounded = round(kp, 1)  # Округляем до 1 знака после запятой
-                        kp_emoji = get_kp_emoji(kp)
-                        
-                        if kp >= 8:
-                            kp_info = f"{kp_emoji} Магнитная буря G5 (Kp={kp_rounded})"
-                        elif kp >= 7:
-                            kp_info = f"{kp_emoji} Магнитная буря G4 (Kp={kp_rounded})"
-                        elif kp >= 6:
-                            kp_info = f"{kp_emoji} Магнитная буря G3 (Kp={kp_rounded})"
-                        elif kp >= 5:
-                            kp_info = f"{kp_emoji} Магнитная буря G2 (Kp={kp_rounded})"
-                        elif kp >= 4.5:
-                            kp_info = f"{kp_emoji} Магнитная буря G1 (Kp={kp_rounded})"
-                        elif kp >= 4:
-                            kp_info = f"{kp_emoji} Небольшое возмущение (Kp={kp_rounded})"
-                        else:
-                            kp_info = f"{kp_emoji} Спокойно (Kp={kp_rounded})"
-                    
-                    # Формируем строку прогноза
                     forecast_lines.append(
                         f"📅 <b>{weekday} {date_str}</b>\n"
-                        f"   ├ {weather_emoji} {weather_desc}\n"
                         f"   ├ 🌡 {min_temp}..{max_temp}°C (ср. {avg_temp}°C)\n"
-                        f"   ├ {rain_indicator} Осадки: {max_pop:.0f}% ({total_rain:.1f}мм)\n"
-                        f"   ├ {wind_emoji} Ветер: {avg_wind} м/с\n"
-                        f"   └ {kp_info}"
+                        f"   └ ☔ Осадки: {max_pop:.0f}%"
                     )
                     
                     day_count += 1
                 
-                # Общий прогноз магнитных бурь на неделю
-                magnet_summary = ""
-                if weekly_kp:
-                    max_kp = max(weekly_kp[:7])
-                    if max_kp >= 7:
-                        magnet_summary = "\n\n⚠️ <b>⚠️ ВНИМАНИЕ! На неделе ожидаются сильные магнитные бури!</b>\nМетеозависимым людям следует быть осторожными."
-                    elif max_kp >= 5:
-                        magnet_summary = "\n\n🌙 <b>На неделе возможны слабые магнитные бури.</b>\nБудьте внимательны к своему самочувствию."
-                    else:
-                        magnet_summary = "\n\n🌙 <b>Геомагнитная обстановка на неделе спокойная.</b>\nМагнитных бурь не ожидается."
-                
-                result = (
-                    f"📆 <b>Прогноз на 7 дней</b>\n\n"
-                    f"{chr(10).join(forecast_lines)}"
-                    f"{magnet_summary}"
-                )
+                result = f"📆 <b>Прогноз на 7 дней</b>\n\n" + "\n".join(forecast_lines)
                 
                 return result, None
                 
         except Exception as e:
-            logger.error(f"Ошибка получения прогноза на неделю: {e}")
             return None, f"❌ Ошибка получения прогноза: {e}"
 
-async def get_weekly_geomagnetic_forecast():
-    """Получить прогноз магнитных бурь на неделю от NOAA"""
-    url = "https://services.swpc.noaa.gov/products/weekly-enlil.json"
-    
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, timeout=10) as resp:
-                if resp.status != 200:
-                    logger.error(f"Ошибка получения прогноза магнитных бурь: {resp.status}")
-                    # Возвращаем примерные данные, если API недоступен
-                    return [round(random.uniform(2, 6), 1) for _ in range(7)]
-                
-                data = await resp.json()
-                
-                # Парсим данные NOAA
-                kp_forecast = []
-                for i, item in enumerate(data[1:8]):  # Пропускаем заголовок, берем 7 дней
-                    try:
-                        # Извлекаем Kp индекс из данных NOAA
-                        if len(item) > 1:
-                            kp_value = float(item[1])
-                            # Округляем до 1 знака
-                            kp_rounded = round(kp_value, 1)
-                            kp_forecast.append(kp_rounded)
-                        else:
-                            kp_forecast.append(3.0)
-                    except (ValueError, IndexError) as e:
-                        logger.error(f"Ошибка парсинга Kp индекса: {e}")
-                        kp_forecast.append(3.0)
-                
-                # Если данных меньше 7, дополняем случайными
-                while len(kp_forecast) < 7:
-                    kp_forecast.append(round(random.uniform(2, 4), 1))
-                
-                return kp_forecast
-                
-        except Exception as e:
-            logger.error(f"Ошибка при получении прогноза магнитных бурь: {e}")
-            # Возвращаем примерные данные с правильным округлением
-            return [round(random.uniform(2, 6), 1) for _ in range(7)]
-
-# НОВОЕ: Расширенная система советов (более 300 вариантов)
 def get_weather_advice(temp, humidity, wind_speed, weather_id, hour, month, is_day, clouds, uvi, kp=None):
-    """Получить персонализированный совет по погоде (более 300 комбинаций)"""
+    """Получить персонализированный совет по погоде"""
     
-    # Определяем время года
-    if month in [12, 1, 2]:
-        season = "зима"
-        season_emoji = "❄️"
-    elif month in [3, 4, 5]:
-        season = "весна"
-        season_emoji = "🌸"
-    elif month in [6, 7, 8]:
-        season = "лето"
-        season_emoji = "🌞"
-    else:
-        season = "осень"
-        season_emoji = "🍂"
-    
-    # Определяем время суток
-    if hour < 6:
-        time_of_day = "ночь"
-        time_emoji = "🌙"
-    elif hour < 12:
-        time_of_day = "утро"
-        time_emoji = "🌅"
-    elif hour < 18:
-        time_of_day = "день"
-        time_emoji = "☀️"
-    else:
-        time_of_day = "вечер"
-        time_emoji = "🌆"
-    
-    # База советов (более 300 комбинаций)
-    advice_pool = []
-    
-    # 1. Советы по температуре (более 50 вариантов)
-    if temp < -30:
-        advice_pool.extend([
-            "🧊 Аномальный холод! Лучше остаться дома",
-            "❄️ Даже в Арктике теплее! Одевайтесь как полярник",
-            "🥶 Такой холод бывает только в Антарктиде",
-            "🔥 Если вы вышли на улицу, вы герой!",
-            "⚠️ Опасность обморожения за 5 минут"
-        ])
-    elif temp < -20:
-        advice_pool.extend([
-            "🧤 Одевайтесь как капуста - много слоев",
-            "❄️ Мороз крепчает, берегите нос и уши",
-            "🥶 Холодно до хруста снега",
-            "🔥 Горячий чай и теплый плед - ваши друзья",
-            "⚠️ Не забывайте про варежки и шарф"
-        ])
-    elif temp < -10:
-        advice_pool.extend([
-            "🧥 Зимняя классика - тепло и комфортно",
-            "☕ Самое время для горячего какао",
-            "❄️ Морозно, но красиво",
-            "🧣 Шарф и шапка обязательны",
-            "⛷️ Отличная погода для зимних видов спорта"
-        ])
-    elif temp < 0:
-        advice_pool.extend([
-            "🧥 Околонулевая температура - одевайтесь теплее",
-            "⚠️ Осторожно, гололед на дорогах",
-            "❄️ Снежок или дождь? Будьте готовы ко всему",
-            "🧤 Шапку не забывайте, ветер холодный",
-            "🌨️ Скользко, смотрите под ноги"
-        ])
-    elif temp < 10:
-        advice_pool.extend([
-            "🧥 Прохладно, легкая куртка не помешает",
-            "🍂 Осенняя погода - время для уюта",
-            "☕ Самое время для чашечки кофе",
-            "🧣 Шарф может пригодиться",
-            "🌬️ Ветер делает погоду холоднее"
-        ])
-    elif temp < 15:
-        advice_pool.extend([
-            "🧥 Легкая куртка или свитер - оптимально",
-            "🌸 Весенняя свежесть",
-            "☀️ Приятно, но не жарко",
-            "🧢 Кепка не помешает от солнца",
-            "🌳 Отличная погода для прогулки"
-        ])
-    elif temp < 20:
-        advice_pool.extend([
-            "👕 Футболка и джинсы - идеальный выбор",
-            "🌞 Комфортная температура для всего",
-            "🧢 Не забудьте головной убор",
-            "☀️ Отлично для активного отдыха",
-            "🌸 Идеальная погода для пикника"
-        ])
-    elif temp < 25:
-        advice_pool.extend([
-            "👕 Легкая одежда - самое то",
-            "☀️ Тепло, но не жарко",
-            "🧴 Можно и нужно загорать",
-            "🍦 Самое время для мороженого",
-            "🏊‍♂️ Отлично для купания"
-        ])
-    elif temp < 30:
-        advice_pool.extend([
-            "🥵 Жарко! Пейте больше воды",
-            "☀️ Избегайте прямого солнца",
-            "🧴 Используйте солнцезащитный крем",
-            "👕 Носите светлую одежду",
-            "🏖️ Хорошо бы на пляж"
-        ])
-    elif temp < 35:
-        advice_pool.extend([
-            "🔥 Настоящая жара! Сидите в тени",
-            "💧 Пейте не меньше 2 литров воды",
-            "❄️ Кондиционер - ваше спасение",
-            "🧊 Холодный душ освежит",
-            "⚠️ Опасность теплового удара"
-        ])
-    else:
-        advice_pool.extend([
-            "🥵 Экстремальная жара! Не выходите на улицу",
-            "🔥 Пекло! Только кондиционер",
-            "💦 Обезвоживание наступает быстро",
-            "⚠️ Высокий риск теплового удара",
-            "🏠 Лучше остаться дома"
-        ])
-    
-    # 2. Советы по осадкам (более 30 вариантов)
-    if 200 <= weather_id < 300:  # Гроза
-        advice_pool.extend([
-            "⛈ Гроза! Не стойте под деревьями",
-            "⚡ Выключите электроприборы",
-            "🏠 Лучше переждать дома",
-            "☔ Молния опасна, будьте осторожны",
-            "🌩 Красиво, но опасно"
-        ])
-    elif 300 <= weather_id < 400:  # Морось
-        advice_pool.extend([
-            "🌧 Моросит дождик, зонт не помешает",
-            "💧 Влажность повышена",
-            "☔ Легкий дождик - не беда",
-            "🚗 На дорогах скользко",
-            "🌂 Компактный зонт в помощь"
-        ])
-    elif 500 <= weather_id < 600:  # Дождь
-        advice_pool.extend([
-            "☔ Дождь! Не забудьте зонт",
-            "💧 Непромокаемая обувь пригодится",
-            "🚗 На дорогах мокро и скользко",
-            "🌧 Отличная погода для уюта дома",
-            "☕ Самое время для горячего чая"
-        ])
-    elif 600 <= weather_id < 700:  # Снег
-        advice_pool.extend([
-            "❄️ Снегопад! Осторожно на дорогах",
-            "☃️ Можно лепить снеговика",
-            "⛄ Красиво, но холодно",
-            "🚗 Скользко, будьте внимательны",
-            "🌨 Запасайтесь горячим какао"
-        ])
-    elif weather_id == 800:  # Ясно
-        advice_pool.extend([
-            "☀️ Ясное небо - отличная погода",
-            "🌞 Солнышко радует",
-            "🕶 Не забудьте солнечные очки",
-            "📸 Хороший день для фото",
-            "🧺 Отличная погода для стирки"
-        ])
-    elif weather_id > 800:  # Облачно
-        advice_pool.extend([
-            "☁️ Облачно, но не грустно",
-            "🌥 Переменная облачность",
-            "📸 Хороший свет для фото",
-            "🧥 Может быть прохладно",
-            "🌤 Солнце иногда выглядывает"
-        ])
-    
-    # 3. Советы по ветру (более 30 вариантов)
-    if wind_speed < 1:
-        advice_pool.extend([
-            "🍃 Полный штиль - идеально для прогулки",
-            "🌿 Природа замерла",
-            "🕯 Можно зажигать свечи на улице",
-            "🎈 Хорошая погода для воздушных шаров",
-            "🌸 Листья не шелохнутся"
-        ])
-    elif wind_speed < 3:
-        advice_pool.extend([
-            "🌬 Легкий ветерок освежает",
-            "🍃 Приятный бриз",
-            "🪁 Можно запускать воздушного змея",
-            "🌿 Листья шелестят",
-            "🌸 Ветер играет с цветами"
-        ])
-    elif wind_speed < 8:
-        advice_pool.extend([
-            "💨 Ветрено, придерживайте шляпу",
-            "🌪 Сильный ветер, осторожно",
-            "🪁 Отлично для воздушного змея",
-            "🧥 Ветер продувает, одевайтесь",
-            "🍂 Листья кружатся"
-        ])
-    else:
-        advice_pool.extend([
-            "🌪 Штормовой ветер! Будьте осторожны",
-            "⚠️ Возможны падения деревьев",
-            "🏠 Лучше остаться дома",
-            "🧥 Ветер с ног сбивает",
-            "🚗 Парковка подальше от деревьев"
-        ])
-    
-    # 4. Советы по влажности (более 20 вариантов)
-    if humidity < 30:
-        advice_pool.extend([
-            "🏜 Воздух сухой, увлажняйте кожу",
-            "💧 Пейте больше воды",
-            "🌵 Как в пустыне",
-            "🧴 Увлажняющий крем пригодится",
-            "💦 Сухость в носу - капли"
-        ])
-    elif humidity > 80:
-        advice_pool.extend([
-            "💧 Высокая влажность, душно",
-            "🌧 Воздух влажный, возможен туман",
-            "🧴 Запаситесь антиперспирантом",
-            "💨 Тяжело дышать",
-            "☔ Сырость"
-        ])
-    
-    # 5. Советы по времени суток (более 20 вариантов)
-    if time_of_day == "ночь":
-        advice_pool.extend([
-            "🌙 Спокойной ночи! Завтра будет новый день",
-            "🌃 Ночной город прекрасен",
-            "⭐ Посмотрите на звезды",
-            "🌜 Луна освещает путь",
-            "🦉 Для сов - самое время"
-        ])
-    elif time_of_day == "утро":
-        advice_pool.extend([
-            "🌅 Доброе утро! Отличного дня",
-            "☀️ Утро встречает солнцем",
-            "🧘 Самое время для зарядки",
-            "☕ Кофе и вперед!",
-            "🌞 Новый день - новые возможности"
-        ])
-    elif time_of_day == "вечер":
-        advice_pool.extend([
-            "🌆 Хорошего вечера!",
-            "🌇 Закат обещает быть красивым",
-            "🍵 Время расслабиться",
-            "📚 Вечер для чтения",
-            "🎬 Кино или книга?"
-        ])
-    
-    # 6. Советы по сезону (более 20 вариантов)
-    if season == "зима":
-        advice_pool.extend([
-            "❄️ Зимняя сказка за окном",
-            "⛷️ Время зимних видов спорта",
-            "🎄 До Нового года все ближе",
-            "☃️ Снеговики ждут",
-            "🔥 Вечера у камина"
-        ])
-    elif season == "весна":
-        advice_pool.extend([
-            "🌸 Весна в разгаре",
-            "🌷 Первые цветы радуют",
-            "🌧 Мартовский дождь",
-            "🌿 Природа просыпается",
-            "☀️ Солнца становится больше"
-        ])
-    elif season == "лето":
-        advice_pool.extend([
-            "🌞 Лето - маленькая жизнь",
-            "🍦 Мороженое - наше все",
-            "🏖️ Пора на пляж",
-            "🌴 Отпуск близко",
-            "🍉 Арбузы уже спеют"
-        ])
-    else:  # осень
-        advice_pool.extend([
-            "🍂 Листопад, листопад",
-            "☔ Дождливая осень",
-            "📚 Время уютных вечеров",
-            "🎃 Хэллоуин приближается",
-            "🧥 Пора доставать куртки"
-        ])
-    
-    # 7. Советы по UV-индексу (более 15 вариантов)
-    if uvi > 7:
-        advice_pool.extend([
-            "🧴 Высокий UV! Намажьтесь кремом",
-            "🕶 Солнцезащитные очки обязательны",
-            "👒 Шляпа спасет от ожога",
-            "🌂 Ищите тень",
-            "⏰ С 11 до 16 лучше не выходить"
-        ])
-    elif uvi > 4:
-        advice_pool.extend([
-            "🧴 UV умеренный, крем не помешает",
-            "🕶 Очки пригодятся",
-            "☀️ Не перегревайтесь",
-            "🧢 Головной убор важен",
-            "🌤 Солнце активное"
-        ])
-    
-    # 8. Советы по магнитным бурям (более 15 вариантов)
-    if kp:
-        if kp >= 7:
-            advice_pool.extend([
-                "🧲 Сильная магнитная буря! Берегите себя",
-                "💊 Метеозависимым - таблетки под рукой",
-                "😴 Больше отдыхайте",
-                "🚗 Осторожнее за рулем",
-                "❤️ Берегите сердце"
-            ])
-        elif kp >= 5:
-            advice_pool.extend([
-                "🧲 Магнитная буря, возможны скачки давления",
-                "💊 Головная боль возможна",
-                "😴 Высыпайтесь",
-                "🚗 Будьте внимательны",
-                "🌡 Давление может скакать"
-            ])
-    
-    # 9. Советы по облачности (более 15 вариантов)
-    if clouds > 80:
-        advice_pool.extend([
-            "☁️ Пасмурно, но не грустно",
-            "🌧 Похоже на дождь",
-            "📷 Плохой свет для фото",
-            "🧥 Прохладно",
-            "💡 Включите свет дома"
-        ])
-    elif clouds < 20:
-        advice_pool.extend([
-            "☀️ Ни облачка - красота",
-            "🌞 Солнце во всей красе",
-            "🕶 Очки обязательны",
-            "📸 Идеальный свет",
-            "🧴 Крем от загара"
-        ])
-    
-    # 10. Мотивационные советы (более 20 вариантов)
-    advice_pool.extend([
-        "💪 Любая погода - хорошая, если ты в хорошем настроении",
+    advice_pool = [
+        "💪 Хорошего дня!",
         "😊 Улыбнитесь, погода не важна",
-        "🌈 После дождя всегда бывает радуга",
+        "🌈 Хорошего настроения!",
         "🌟 Каждый день уникален",
-        "🎯 Погода не повод откладывать дела",
-        "📈 Используйте время с пользой",
-        "💡 Даже в дождь можно найти плюсы",
-        "🎵 Включите любимую музыку",
-        "📖 Почитайте хорошую книгу",
-        "☕ Выпейте чашечку чая",
-        "🧘 Не забудьте о релаксации",
-        "🏃 Движение - жизнь",
-        "🍎 Здоровое питание важно",
-        "📝 Запишите свои мысли",
-        "🌱 Радуйтесь мелочам",
-        "🎨 Найдите вдохновение",
-        "🎭 Жизнь прекрасна",
-        "🌺 Цените каждый момент",
-        "🕊 Мир прекрасен",
-        "✨ Верьте в лучшее"
-    ])
+        "☕ Хорошего дня!"
+    ]
     
-    # Выбираем случайный совет
     return random.choice(advice_pool)
 
 def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, uv_desc, uv_advice, forecast_lines=None, zodiac_sign=None):
-    """Форматировать полный отчет о погоде с восходом, закатом и почасовым прогнозом"""
+    """Форматировать полный отчет о погоде"""
     
     now = datetime.datetime.now()
-    hour = now.hour
-    month = now.month
     
-    # Основная информация
     w_info = weather_data['weather'][0]
     w_id = w_info['id']
     temp = round(weather_data['main']['temp'])
@@ -1389,26 +792,20 @@ def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, u
     desc = w_info['description']
     name = weather_data['name']
     
-    # Дополнительная информация
     humidity = weather_data['main']['humidity']
     pressure = round(weather_data['main']['pressure'] * 0.750062)
     
-    # Округляем скорость ветра до целых
     wind_speed = round(weather_data['wind']['speed'])
     wind_deg = weather_data['wind'].get('deg', 0)
-    wind_gust = round(weather_data['wind'].get('gust', 0)) if 'gust' in weather_data['wind'] else 0
     clouds = weather_data['clouds']['all']
     
-    # Получаем время восхода и заката
     sunrise_timestamp = weather_data['sys']['sunrise']
     sunset_timestamp = weather_data['sys']['sunset']
     timezone_offset = weather_data['timezone']
     
-    # Конвертируем UTC в местное время
     sunrise_time = datetime.datetime.fromtimestamp(sunrise_timestamp + timezone_offset).strftime("%H:%M")
     sunset_time = datetime.datetime.fromtimestamp(sunset_timestamp + timezone_offset).strftime("%H:%M")
     
-    # Выбор эмодзи для погоды
     if w_id == 800:
         weather_emoji = "☀️"
     elif w_id > 800:
@@ -1424,85 +821,31 @@ def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, u
     else:
         weather_emoji = "🌡"
     
-    # Получаем эмодзи для ветра и влажности
     wind_emoji = get_wind_emoji(wind_speed)
     humidity_emoji = get_humidity_emoji(humidity)
     wind_dir = get_wind_direction(wind_deg)
     
-    # Определяем, день сейчас или ночь
-    current_local_time = now.timestamp() + timezone_offset
-    is_day = sunrise_timestamp < current_local_time < sunset_timestamp
-    
-    # Формируем UV строку
-    if 6 <= hour <= 20:
-        uv_text = f"\n☀️ <b>Солнечная активность:</b>\nUV-индекс: {estimated_uvi:.1f} - {uv_desc}\n💡 {uv_advice}"
-    else:
-        uv_text = "\n🌙 Сейчас ночь, UV-индекс минимальный"
-    
-    # Формируем геомагнитную строку
-    kp_value = None
-    if geomagnetic:
-        kp, kp_trend = geomagnetic
-        kp_value = kp
-        kp_desc, kp_advice = get_kp_description(kp)
-        kp_emoji = get_kp_emoji(kp)
-        magnet_text = f"\n\n🧲 <b>Геомагнитная обстановка:</b>\n{kp_emoji} Kp={kp:.1f} {kp_trend} - {kp_desc}\n💡 {kp_advice}"
-    else:
-        magnet_text = ""
-    
-    # Формируем строку с луной
-    moon_text = (
-        f"\n\n🌙 <b>Луна сегодня:</b>\n"
-        f"{moon_data['emoji']} {moon_data['name']}\n"
-        f"💡 Освещенность: {moon_data['illumination']}%"
-    )
-    
-    # Добавляем информацию о восходе и закате
-    sun_text = f"\n\n🌅 <b>Восход и закат:</b>\n🌄 Восход: {sunrise_time}\n🌇 Закат: {sunset_time}"
-    
-    # Получаем персонализированный совет
-    advice = get_weather_advice(
-        temp=temp,
-        humidity=humidity,
-        wind_speed=wind_speed,
-        weather_id=w_id,
-        hour=hour,
-        month=month,
-        is_day=is_day,
-        clouds=clouds,
-        uvi=estimated_uvi,
-        kp=kp_value
-    )
-    
-    # Формируем полный отчет
     report = (
         f"{weather_emoji} <b>{name}</b>\n"
         f"🌡 {temp}°C (ощущается как {feels_like}°C)\n"
         f"{desc.capitalize()}\n\n"
         f"{humidity_emoji} Влажность: {humidity}%\n"
-        f"{wind_emoji} Ветер: {wind_speed} м/с, {wind_dir}"
+        f"{wind_emoji} Ветер: {wind_speed} м/с, {wind_dir}\n"
+        f"📊 Давление: {pressure} мм рт.ст.\n"
+        f"☁️ Облачность: {clouds}%\n"
+        f"\n🌙 <b>Луна сегодня:</b>\n"
+        f"{moon_data['emoji']} {moon_data['name']}\n"
+        f"💡 Освещенность: {moon_data['illumination']}%\n"
+        f"\n🌅 <b>Восход и закат:</b>\n"
+        f"🌄 Восход: {sunrise_time}\n"
+        f"🌇 Закат: {sunset_time}"
     )
     
-    if wind_gust > 0:
-        report += f" (порывы до {wind_gust} м/с)"
-    
-    report += f"\n📊 Давление: {pressure} мм рт.ст.\n"
-    report += f"☁️ Облачность: {clouds}%\n"
-    report += uv_text
-    report += magnet_text
-    report += moon_text
-    report += sun_text
-    
-    # Добавляем почасовой прогноз, если он есть
     if forecast_lines and len(forecast_lines) > 0:
-        logger.info(f"Добавляю {len(forecast_lines)} строк прогноза в отчет")
         report += f"\n\n📅 <b>Почасовой прогноз на 24 часа:</b>"
         for line in forecast_lines:
             report += f"\n{line}"
-    else:
-        logger.warning("Нет данных прогноза для добавления")
     
-    # Добавляем информацию о гороскопе
     if zodiac_sign:
         sign_data = ZODIAC_SIGNS.get(zodiac_sign)
         if sign_data:
@@ -1512,75 +855,51 @@ def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, u
     else:
         horoscope_note = f"\n\n🔮 <b>Гороскоп:</b>\nУстановите /zodiac и получайте персональные прогнозы!"
     
+    advice = get_weather_advice(temp, humidity, wind_speed, w_id, now.hour, now.month, True, clouds, estimated_uvi)
     report += horoscope_note
     report += f"\n\n💡 <b>Совет дня:</b>\n{advice}"
     
     return report
 
 async def get_weather_with_details(city_or_coords, user_id=None):
-    """Получить текущую погоду со всеми деталями и почасовым прогнозом"""
+    """Получить текущую погоду со всеми деталями"""
     
-    # Получаем данные о погоде
     weather_data, error = await get_weather_data(city_or_coords)
     
     if error or not weather_data:
-        logger.error(f"Ошибка получения данных о погоде: {error}")
         return None, error or "❌ Не удалось получить данные", None, None, None
     
     try:
-        # Получаем координаты
         coord = weather_data['coord']
-        logger.info(f"Получены координаты: {coord}")
         
-        # Получаем почасовой прогноз
         forecast_lines, forecast_error = await get_hourly_forecast(coord['lat'], coord['lon'])
-        
         if forecast_error:
-            logger.error(f"Ошибка прогноза: {forecast_error}")
             forecast_lines = None
         
-        # Получаем текущее время для расчета UV
         now = datetime.datetime.now()
         hour = now.hour
         clouds = weather_data['clouds']['all']
         
-        # Получаем геомагнитные данные
         geomagnetic = await get_geomagnetic_data()
-        
-        # Получаем данные о луне
         moon_data = await get_moon_data()
         
-        # Получаем знак зодиака пользователя, если передан user_id
         zodiac_sign = None
         if user_id:
             zodiac_sign = get_user_zodiac(user_id)
         
-        # Оцениваем UV-индекс
         estimated_uvi = estimate_uv_from_sun(hour, clouds)
         uv_desc, uv_advice = get_uv_description(estimated_uvi)
         
-        # Форматируем отчет с прогнозом и знаком зодиака
         report = format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, uv_desc, uv_advice, forecast_lines, zodiac_sign)
         
-        # Сохраняем все данные для возврата
-        full_data = {
-            'weather': weather_data,
-            'moon': moon_data,
-            'geomagnetic': geomagnetic,
-            'uvi': estimated_uvi,
-            'uv_desc': uv_desc,
-            'uv_advice': uv_advice,
-            'forecast_lines': forecast_lines,
-            'report': report
-        }
-        
-        return (report, weather_data['name'], weather_data.get('timezone', 10800), None, weather_data['coord'], full_data)
+        return (report, weather_data['name'], weather_data.get('timezone', 10800), None, weather_data['coord'], None)
         
     except Exception as e:
         logger.error(f"Ошибка при обработке данных: {e}")
         return None, "❌ Ошибка при обработке данных", None, None, None
 
-# --- ОБРАБОТЧИКИ ---
+# --- ОБРАБОТЧИКИ КОМАНД ---
+
 @dp.message(Command("start"))
 async def start(msg: types.Message):
     init_db()
@@ -1611,7 +930,7 @@ async def help_cmd(msg: types.Message):
 /uv - Информация об UV-индексе
 /magnet - Информация о магнитных бурях
 /moon - Информация о фазе луны
-/test - Проверить работу API
+/test - Проверить работу API погоды
 /test_horoscope - Проверить работу API гороскопа
 
 <b>Как пользоваться:</b>
@@ -1619,43 +938,52 @@ async def help_cmd(msg: types.Message):
 2. Отправьте свою локацию или название города
 3. Получайте ежедневную погоду с деталями
 4. Используйте /horoscope для гороскопа
-
-<b>В погоде отображается:</b>
-• Температура и ощущение
-• Влажность и ветер
-• Давление и облачность
-• UV-индекс (оценка)
-• Магнитные бури
-• Фаза луны
-• Восход и закат
-• Почасовой прогноз (если доступен)
-• Персонализированный совет дня
     """
     await msg.answer(help_text, parse_mode="HTML")
 
 @dp.message(Command("test"))
 async def test_cmd(msg: types.Message):
-    await msg.answer("🔄 Проверка API ключа...")
+    await msg.answer("🔄 Проверка API ключа погоды...")
     api_ok, api_message = await test_api_key()
     await msg.answer(api_message)
 
 @dp.message(Command("test_horoscope"))
 async def test_horoscope(msg: types.Message):
     """Тест API гороскопа"""
-    await msg.answer("🔄 Проверяю API гороскопа...")
+    await msg.answer("🔄 Проверяю API гороскопа... Это может занять несколько секунд.")
     
-    # Тестируем для знака Овен
-    result = await get_horoscope("aries", "today")
-    
-    if result:
-        description = result.get('description', 'Нет описания')
-        await msg.answer(
-            f"✅ API работает!\n\n"
-            f"📝 Описание: {description[:200]}...\n\n"
-            f"📊 Все данные: {str(result)[:200]}..."
-        )
-    else:
-        await msg.answer("❌ API гороскопа не отвечает")
+    try:
+        result = await get_horoscope("aries", "today")
+        
+        if result:
+            description = result.get('description', 'Нет описания')
+            compatibility = result.get('compatibility', 'Нет данных')
+            mood = result.get('mood', 'Нет данных')
+            color = result.get('color', 'Нет данных')
+            lucky_number = result.get('lucky_number', 'Нет данных')
+            
+            response = (
+                f"✅ <b>API гороскопа работает!</b>\n\n"
+                f"📝 <b>Описание для Овна на сегодня:</b>\n"
+                f"{description}\n\n"
+                f"💕 <b>Совместимость:</b> {compatibility}\n"
+                f"😊 <b>Настроение:</b> {mood}\n"
+                f"🎨 <b>Цвет:</b> {color}\n"
+                f"🔢 <b>Счастливое число:</b> {lucky_number}\n\n"
+                f"📊 <b>Получено полей данных:</b> {len(result)}"
+            )
+            await msg.answer(response, parse_mode="HTML")
+        else:
+            await msg.answer(
+                "❌ <b>API гороскопа не отвечает.</b>\n\n"
+                "Возможные причины:\n"
+                "• Сервис aztro временно недоступен\n"
+                "• Проблемы с интернет-соединением\n"
+                "• Блокировка запросов",
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        await msg.answer(f"❌ <b>Ошибка при запросе:</b>\n{str(e)[:200]}", parse_mode="HTML")
 
 @dp.message(Command("weather"))
 async def weather_cmd(msg: types.Message):
@@ -1668,12 +996,10 @@ async def weather_cmd(msg: types.Message):
     if result and result[0]:
         city = result[0]
         await msg.answer(f"🔄 Получаю погоду для {city}...")
-        # Передаем user_id для получения знака зодиака
         result = await get_weather_with_details(city, msg.from_user.id)
         
         if result[0]:
             report, city, tz, _, coord, full_data = result
-            # Кнопки для прогнозов и гороскопа
             kb = InlineKeyboardMarkup(inline_keyboard=[
                 [
                     InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
@@ -1691,6 +1017,83 @@ async def weather_cmd(msg: types.Message):
             await msg.answer(result[1])
     else:
         await msg.answer("❌ Город не сохранен. Отправьте локацию или название города.")
+
+@dp.message(Command("horoscope"))
+async def horoscope_menu(msg: types.Message):
+    """Меню гороскопа с выбором знака"""
+    
+    user_zodiac = get_user_zodiac(msg.from_user.id)
+    
+    zodiac_buttons = []
+    row = []
+    
+    for i, (sign_en, sign_data) in enumerate(ZODIAC_SIGNS.items()):
+        button_text = f"{sign_data['emoji']} {sign_data['name']}"
+        if user_zodiac == sign_en:
+            button_text = f"⭐ {button_text}"
+            
+        button = InlineKeyboardButton(
+            text=button_text, 
+            callback_data=f"horoscope_{sign_en}"
+        )
+        row.append(button)
+        
+        if (i + 1) % 3 == 0:
+            zodiac_buttons.append(row)
+            row = []
+    
+    if row:
+        zodiac_buttons.append(row)
+    
+    zodiac_buttons.append([
+        InlineKeyboardButton(text="📅 Сегодня", callback_data="horoscope_period_today"),
+        InlineKeyboardButton(text="🔮 Завтра", callback_data="horoscope_period_tomorrow"),
+        InlineKeyboardButton(text="📆 Неделя", callback_data="horoscope_period_weekly")
+    ])
+    
+    if user_zodiac:
+        zodiac_buttons.append([
+            InlineKeyboardButton(text="⭐ Мой знак", callback_data="horoscope_mine")
+        ])
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=zodiac_buttons)
+    
+    await msg.answer(
+        "🔮 <b>Астрологический прогноз</b>\n\n"
+        "Выберите ваш знак зодиака или период:",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
+
+@dp.message(Command("zodiac"))
+async def set_zodiac(msg: types.Message):
+    """Установить знак зодиака пользователя"""
+    
+    zodiac_buttons = []
+    row = []
+    
+    for i, (sign_en, sign_data) in enumerate(ZODIAC_SIGNS.items()):
+        button = InlineKeyboardButton(
+            text=f"{sign_data['emoji']} {sign_data['name']}", 
+            callback_data=f"setzodiac_{sign_en}"
+        )
+        row.append(button)
+        
+        if (i + 1) % 3 == 0:
+            zodiac_buttons.append(row)
+            row = []
+    
+    if row:
+        zodiac_buttons.append(row)
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=zodiac_buttons)
+    
+    await msg.answer(
+        "⭐ <b>Выберите ваш знак зодиака:</b>\n\n"
+        "Это позволит быстро получать гороскоп для вашего знака.",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
 
 @dp.message(Command("uv"))
 async def uv_info(msg: types.Message):
@@ -1729,10 +1132,8 @@ async def magnet_info(msg: types.Message):
 
 @dp.message(Command("moon"))
 async def moon_info(msg: types.Message):
-    """Команда для получения информации о луне"""
     moon_data = await get_moon_data()
     
-    # Расчет дней до следующего полнолуния/новолуния
     phase = moon_data['phase']
     
     days_to_full = (0.5 - phase) % 1.0
@@ -1760,296 +1161,7 @@ async def moon_info(msg: types.Message):
         parse_mode="HTML"
     )
 
-# --- НОВЫЕ КОМАНДЫ ДЛЯ ГОРОСКОПА ---
-
-@dp.message(Command("horoscope"))
-async def horoscope_menu(msg: types.Message):
-    """Меню гороскопа с выбором знака"""
-    
-    # Получаем знак пользователя, если сохранен
-    user_zodiac = get_user_zodiac(msg.from_user.id)
-    
-    # Создаем клавиатуру со всеми знаками зодиака
-    zodiac_buttons = []
-    row = []
-    
-    for i, (sign_en, sign_data) in enumerate(ZODIAC_SIGNS.items()):
-        button_text = f"{sign_data['emoji']} {sign_data['name']}"
-        if user_zodiac == sign_en:
-            button_text = f"⭐ {button_text}"  # Отмечаем сохраненный знак звездочкой
-            
-        button = InlineKeyboardButton(
-            text=button_text, 
-            callback_data=f"horoscope_{sign_en}"
-        )
-        row.append(button)
-        
-        # По 3 кнопки в ряд
-        if (i + 1) % 3 == 0:
-            zodiac_buttons.append(row)
-            row = []
-    
-    # Добавляем оставшиеся кнопки
-    if row:
-        zodiac_buttons.append(row)
-    
-    # Добавляем кнопки для выбора периода
-    zodiac_buttons.append([
-        InlineKeyboardButton(text="📅 Сегодня", callback_data="horoscope_period_today"),
-        InlineKeyboardButton(text="🔮 Завтра", callback_data="horoscope_period_tomorrow"),
-        InlineKeyboardButton(text="📆 Неделя", callback_data="horoscope_period_weekly")
-    ])
-    
-    # Добавляем кнопку для моего знака
-    if user_zodiac:
-        zodiac_buttons.append([
-            InlineKeyboardButton(text="⭐ Мой знак", callback_data="horoscope_mine")
-        ])
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=zodiac_buttons)
-    
-    await msg.answer(
-        "🔮 <b>Астрологический прогноз</b>\n\n"
-        "Выберите ваш знак зодиака или период:",
-        reply_markup=kb,
-        parse_mode="HTML"
-    )
-
-@dp.message(Command("zodiac"))
-async def set_zodiac(msg: types.Message):
-    """Установить знак зодиака пользователя"""
-    
-    # Создаем клавиатуру для выбора знака
-    zodiac_buttons = []
-    row = []
-    
-    for i, (sign_en, sign_data) in enumerate(ZODIAC_SIGNS.items()):
-        button = InlineKeyboardButton(
-            text=f"{sign_data['emoji']} {sign_data['name']}", 
-            callback_data=f"setzodiac_{sign_en}"
-        )
-        row.append(button)
-        
-        # По 3 кнопки в ряд
-        if (i + 1) % 3 == 0:
-            zodiac_buttons.append(row)
-            row = []
-    
-    # Добавляем оставшиеся кнопки
-    if row:
-        zodiac_buttons.append(row)
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=zodiac_buttons)
-    
-    await msg.answer(
-        "⭐ <b>Выберите ваш знак зодиака:</b>\n\n"
-        "Это позволит быстро получать гороскоп для вашего знака.",
-        reply_markup=kb,
-        parse_mode="HTML"
-    )
-
-@dp.callback_query(F.data.startswith("setzodiac_"))
-async def process_set_zodiac(call: types.CallbackQuery):
-    """Обработка выбора знака зодиака"""
-    sign_en = call.data.split("_")[1]
-    sign_data = ZODIAC_SIGNS.get(sign_en)
-    
-    if sign_data:
-        # Сохраняем знак в БД
-        update_user(call.from_user.id, zodiac_sign=sign_en)
-        
-        await call.message.edit_text(
-            f"✅ Ваш знак зодиака сохранен: {sign_data['emoji']} {sign_data['name']}\n\n"
-            f"Теперь вы можете использовать кнопку «Мой знак» в меню гороскопа."
-        )
-    else:
-        await call.message.edit_text("❌ Ошибка: знак не найден")
-    
-    await call.answer()
-
-@dp.callback_query(F.data.startswith("horoscope_"))
-async def process_horoscope(call: types.CallbackQuery):
-    """Обработка запросов гороскопа"""
-    data = call.data
-    logger.info(f"Получен callback: {data}")
-    
-    # Обработка периода
-    if data == "horoscope_period_today":
-        await call.message.edit_text(
-            "📅 Выберите знак зодиака для получения гороскопа на сегодня:",
-            reply_markup=create_zodiac_keyboard("today")
-        )
-        await call.answer()
-        return
-    
-    elif data == "horoscope_period_tomorrow":
-        await call.message.edit_text(
-            "🔮 Выберите знак зодиака для получения гороскопа на завтра:",
-            reply_markup=create_zodiac_keyboard("tomorrow")
-        )
-        await call.answer()
-        return
-    
-    elif data == "horoscope_period_weekly":
-        await call.message.edit_text(
-            "📆 Выберите знак зодиака для получения гороскопа на неделю:",
-            reply_markup=create_zodiac_keyboard("weekly")
-        )
-        await call.answer()
-        return
-    
-    elif data == "horoscope_mine":
-        # Получаем сохраненный знак пользователя
-        zodiac_sign = get_user_zodiac(call.from_user.id)
-        
-        if zodiac_sign:
-            # Показываем гороскоп на сегодня для сохраненного знака
-            await call.answer("Загружаю гороскоп...")
-            await show_horoscope_for_sign(call, zodiac_sign, "today")
-        else:
-            await call.message.edit_text(
-                "❌ Вы еще не сохранили свой знак зодиака.\n\n"
-                "Используйте команду /zodiac чтобы выбрать знак.",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="⭐ Выбрать знак", callback_data="back_to_zodiac")]
-                ])
-            )
-        await call.answer()
-        return
-    
-    # Обработка выбора знака с периодом
-    elif data.startswith("horoscope_sign_"):
-        # Формат: horoscope_sign_{period}_{sign}
-        try:
-            parts = data.split("_")
-            if len(parts) >= 4:
-                period = parts[2]
-                sign_en = parts[3]
-                logger.info(f"Запрос гороскопа: знак={sign_en}, период={period}")
-                
-                await call.answer("Загружаю гороскоп...")
-                await show_horoscope_for_sign(call, sign_en, period)
-            else:
-                logger.error(f"Некорректный формат data: {data}")
-                await call.message.edit_text("❌ Ошибка формата данных")
-        except Exception as e:
-            logger.error(f"Ошибка при обработке horoscope_sign_: {e}")
-            await call.message.edit_text("❌ Ошибка при обработке запроса")
-        return
-    
-    # Обработка выбора знака без периода (для главного меню)
-    elif len(data.split("_")) == 2:
-        sign_en = data.split("_")[1]
-        logger.info(f"Запрос гороскопа для знака {sign_en} на сегодня")
-        
-        await call.answer("Загружаю гороскоп...")
-        await show_horoscope_for_sign(call, sign_en, "today")
-        return
-    
-    else:
-        logger.error(f"Неизвестный формат callback: {data}")
-        await call.message.edit_text("❌ Неизвестная команда")
-        await call.answer()
-
-@dp.callback_query(F.data == "horoscope_menu")
-async def horoscope_button(call: types.CallbackQuery):
-    """Обработчик кнопки Гороскоп"""
-    await call.answer()
-    await horoscope_menu(call.message)
-
-def create_zodiac_keyboard(period):
-    """Создать клавиатуру со знаками зодиака для выбранного периода"""
-    zodiac_buttons = []
-    row = []
-    
-    for i, (sign_en, sign_data) in enumerate(ZODIAC_SIGNS.items()):
-        button = InlineKeyboardButton(
-            text=f"{sign_data['emoji']} {sign_data['name']}", 
-            callback_data=f"horoscope_sign_{period}_{sign_en}"
-        )
-        row.append(button)
-        
-        # По 3 кнопки в ряд
-        if (i + 1) % 3 == 0:
-            zodiac_buttons.append(row)
-            row = []
-    
-    # Добавляем оставшиеся кнопки
-    if row:
-        zodiac_buttons.append(row)
-    
-    # Добавляем кнопки для выбора периода и возврата
-    zodiac_buttons.append([
-        InlineKeyboardButton(text="📅 Сегодня", callback_data="horoscope_period_today"),
-        InlineKeyboardButton(text="🔮 Завтра", callback_data="horoscope_period_tomorrow"),
-        InlineKeyboardButton(text="📆 Неделя", callback_data="horoscope_period_weekly")
-    ])
-    
-    zodiac_buttons.append([
-        InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_to_horoscope_menu")
-    ])
-    
-    return InlineKeyboardMarkup(inline_keyboard=zodiac_buttons)
-
-async def show_horoscope_for_sign(call, sign_en, period):
-    """Показать гороскоп для выбранного знака и периода"""
-    
-    logger.info(f"show_horoscope_for_sign: sign_en={sign_en}, period={period}")
-    
-    sign_data = ZODIAC_SIGNS.get(sign_en)
-    if not sign_data:
-        logger.error(f"Знак не найден: {sign_en}")
-        await call.message.edit_text(
-            f"❌ Ошибка: знак '{sign_en}' не найден",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_horoscope_menu")]
-            ])
-        )
-        return
-    
-    await call.message.edit_text(f"🔄 Получаю гороскоп для {sign_data['emoji']} {sign_data['name']}...")
-    
-    # Получаем гороскоп
-    horoscope_data = await get_horoscope(sign_en, period)
-    
-    if not horoscope_data:
-        await call.message.edit_text(
-            f"❌ Не удалось получить гороскоп для {sign_data['emoji']} {sign_data['name']}.\n"
-            f"Попробуйте позже.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_horoscope_menu")]
-            ])
-        )
-        return
-    
-    # Форматируем и отправляем
-    report = format_horoscope(horoscope_data, sign_data['name'], sign_data['emoji'], period)
-    
-    # Создаем клавиатуру для навигации
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="📅 Сегодня", callback_data=f"horoscope_sign_today_{sign_en}"),
-            InlineKeyboardButton(text="🔮 Завтра", callback_data=f"horoscope_sign_tomorrow_{sign_en}"),
-            InlineKeyboardButton(text="📆 Неделя", callback_data=f"horoscope_sign_weekly_{sign_en}")
-        ],
-        [
-            InlineKeyboardButton(text="🔙 К выбору знака", callback_data="back_to_horoscope_menu")
-        ]
-    ])
-    
-    await call.message.edit_text(report, reply_markup=kb, parse_mode="HTML")
-
-@dp.callback_query(F.data == "back_to_horoscope_menu")
-async def back_to_horoscope_menu(call: types.CallbackQuery):
-    """Вернуться в главное меню гороскопа"""
-    await horoscope_menu(call.message)
-    await call.answer()
-
-@dp.callback_query(F.data == "back_to_zodiac")
-async def back_to_zodiac(call: types.CallbackQuery):
-    """Вернуться к выбору знака зодиака"""
-    await set_zodiac(call.message)
-    await call.answer()
+# --- ОБРАБОТЧИКИ CALLBACK ---
 
 @dp.callback_query(F.data.startswith("set_"))
 async def set_time(call: types.CallbackQuery):
@@ -2064,20 +1176,259 @@ async def set_time(call: types.CallbackQuery):
                              reply_markup=geo_kb)
     await call.answer()
 
+@dp.callback_query(F.data.startswith("setzodiac_"))
+async def process_set_zodiac(call: types.CallbackQuery):
+    sign_en = call.data.split("_")[1]
+    sign_data = ZODIAC_SIGNS.get(sign_en)
+    
+    if sign_data:
+        update_user(call.from_user.id, zodiac_sign=sign_en)
+        await call.message.edit_text(
+            f"✅ Ваш знак зодиака сохранен: {sign_data['emoji']} {sign_data['name']}\n\n"
+            f"Теперь вы можете использовать кнопку «Мой знак» в меню гороскопа."
+        )
+    else:
+        await call.message.edit_text("❌ Ошибка: знак не найден")
+    
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("refresh_"))
+async def refresh_weather(call: types.CallbackQuery):
+    await call.answer("Обновляю данные...")
+    
+    parts = call.data.split('_')
+    lat = float(parts[1])
+    lon = float(parts[2])
+    
+    coords = {"lat": lat, "lon": lon}
+    result = await get_weather_with_details(coords, call.from_user.id)
+    
+    if result[0]:
+        report, city, tz, _, coord, full_data = result
+        
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
+            ],
+            [
+                InlineKeyboardButton(text="📅 На завтра", callback_data=f"tomorrow_{coord['lat']}_{coord['lon']}"),
+                InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
+            ],
+            [
+                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
+            ]
+        ])
+        
+        await call.message.edit_text(f"📍 {city}\n\n{report}", 
+                                    reply_markup=kb,
+                                    parse_mode="HTML")
+    else:
+        await call.message.edit_text("❌ Не удалось обновить погоду")
+
+@dp.callback_query(F.data.startswith("tomorrow_"))
+async def show_tomorrow_forecast(call: types.CallbackQuery):
+    await call.answer("Загружаю прогноз на завтра...")
+    
+    parts = call.data.split('_')
+    lat = float(parts[1])
+    lon = float(parts[2])
+    
+    forecast, error = await get_tomorrow_forecast(lat, lon)
+    
+    if forecast:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔙 К текущей погоде", callback_data=f"refresh_{lat}_{lon}")
+            ],
+            [
+                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
+            ]
+        ])
+        
+        await call.message.edit_text(forecast, 
+                                    reply_markup=kb,
+                                    parse_mode="HTML")
+    else:
+        await call.message.answer(error or "❌ Не удалось получить прогноз")
+
+@dp.callback_query(F.data.startswith("week_"))
+async def show_weekly_forecast(call: types.CallbackQuery):
+    await call.answer("Загружаю прогноз на неделю...")
+    
+    parts = call.data.split('_')
+    lat = float(parts[1])
+    lon = float(parts[2])
+    
+    forecast, error = await get_weekly_forecast(lat, lon)
+    
+    if forecast:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔙 К текущей погоде", callback_data=f"refresh_{lat}_{lon}")
+            ],
+            [
+                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
+            ]
+        ])
+        
+        await call.message.edit_text(forecast, 
+                                    reply_markup=kb,
+                                    parse_mode="HTML")
+    else:
+        await call.message.answer(error or "❌ Не удалось получить прогноз")
+
+@dp.callback_query(F.data == "horoscope_menu")
+async def horoscope_button(call: types.CallbackQuery):
+    await call.answer()
+    await horoscope_menu(call.message)
+
+@dp.callback_query(F.data == "back_to_horoscope_menu")
+async def back_to_horoscope_menu(call: types.CallbackQuery):
+    await horoscope_menu(call.message)
+    await call.answer()
+
+@dp.callback_query(F.data == "back_to_zodiac")
+async def back_to_zodiac(call: types.CallbackQuery):
+    await set_zodiac(call.message)
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("horoscope_"))
+async def process_horoscope(call: types.CallbackQuery):
+    data = call.data
+    logger.info(f"Получен callback: {data}")
+    
+    if data == "horoscope_period_today":
+        await call.message.edit_text(
+            "📅 Выберите знак зодиака на сегодня:",
+            reply_markup=create_zodiac_keyboard("today")
+        )
+        await call.answer()
+        return
+    
+    elif data == "horoscope_period_tomorrow":
+        await call.message.edit_text(
+            "🔮 Выберите знак зодиака на завтра:",
+            reply_markup=create_zodiac_keyboard("tomorrow")
+        )
+        await call.answer()
+        return
+    
+    elif data == "horoscope_period_weekly":
+        await call.message.edit_text(
+            "📆 Выберите знак зодиака на неделю:",
+            reply_markup=create_zodiac_keyboard("weekly")
+        )
+        await call.answer()
+        return
+    
+    elif data == "horoscope_mine":
+        zodiac_sign = get_user_zodiac(call.from_user.id)
+        
+        if zodiac_sign:
+            await call.answer("Загружаю гороскоп...")
+            await show_horoscope_for_sign(call, zodiac_sign, "today")
+        else:
+            await call.message.edit_text(
+                "❌ Вы еще не сохранили свой знак зодиака.\n\n"
+                "Используйте команду /zodiac чтобы выбрать знак.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="⭐ Выбрать знак", callback_data="back_to_zodiac")]
+                ])
+            )
+        await call.answer()
+        return
+    
+    elif data.startswith("horoscope_sign_"):
+        parts = data.split("_")
+        if len(parts) >= 4:
+            period = parts[2]
+            sign_en = parts[3]
+            await call.answer("Загружаю гороскоп...")
+            await show_horoscope_for_sign(call, sign_en, period)
+        return
+    
+    elif len(data.split("_")) == 2:
+        sign_en = data.split("_")[1]
+        await call.answer("Загружаю гороскоп...")
+        await show_horoscope_for_sign(call, sign_en, "today")
+        return
+
+def create_zodiac_keyboard(period):
+    zodiac_buttons = []
+    row = []
+    
+    for i, (sign_en, sign_data) in enumerate(ZODIAC_SIGNS.items()):
+        button = InlineKeyboardButton(
+            text=f"{sign_data['emoji']} {sign_data['name']}", 
+            callback_data=f"horoscope_sign_{period}_{sign_en}"
+        )
+        row.append(button)
+        
+        if (i + 1) % 3 == 0:
+            zodiac_buttons.append(row)
+            row = []
+    
+    if row:
+        zodiac_buttons.append(row)
+    
+    zodiac_buttons.append([
+        InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_horoscope_menu")
+    ])
+    
+    return InlineKeyboardMarkup(inline_keyboard=zodiac_buttons)
+
+async def show_horoscope_for_sign(call, sign_en, period):
+    sign_data = ZODIAC_SIGNS.get(sign_en)
+    if not sign_data:
+        await call.message.edit_text(
+            f"❌ Ошибка: знак не найден",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_horoscope_menu")]
+            ])
+        )
+        return
+    
+    await call.message.edit_text(f"🔄 Получаю гороскоп для {sign_data['emoji']} {sign_data['name']}...")
+    
+    horoscope_data = await get_horoscope(sign_en, period)
+    
+    if not horoscope_data:
+        await call.message.edit_text(
+            f"❌ Не удалось получить гороскоп.\nПопробуйте позже.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_horoscope_menu")]
+            ])
+        )
+        return
+    
+    report = format_horoscope(horoscope_data, sign_data['name'], sign_data['emoji'], period)
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📅 Сегодня", callback_data=f"horoscope_sign_today_{sign_en}"),
+            InlineKeyboardButton(text="🔮 Завтра", callback_data=f"horoscope_sign_tomorrow_{sign_en}"),
+            InlineKeyboardButton(text="📆 Неделя", callback_data=f"horoscope_sign_weekly_{sign_en}")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 К выбору знака", callback_data="back_to_horoscope_menu")
+        ]
+    ])
+    
+    await call.message.edit_text(report, reply_markup=kb, parse_mode="HTML")
+
+# --- ОБРАБОТЧИКИ СООБЩЕНИЙ ---
+
 @dp.message(F.location)
 async def handle_location(msg: types.Message):
     await msg.answer("🔄 Получаю погоду по вашему местоположению...")
     coords = {"lat": msg.location.latitude, "lon": msg.location.longitude}
-    # Передаем user_id
     result = await get_weather_with_details(coords, msg.from_user.id)
     
     if result[0]:
         report, city, tz, _, coord, full_data = result
         
-        # Сохраняем город
         update_user(msg.chat.id, city=city, timezone=tz)
         
-        # Кнопки для прогнозов и гороскопа
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
@@ -2100,21 +1451,17 @@ async def handle_location(msg: types.Message):
 
 @dp.message()
 async def handle_city(msg: types.Message):
-    # Игнорируем команды
     if msg.text.startswith('/'):
         return
     
     await msg.answer(f"🔄 Ищу город {msg.text}...")
-    # Передаем user_id
     result = await get_weather_with_details(msg.text, msg.from_user.id)
     
     if result[0]:
         report, city, tz, _, coord, full_data = result
         
-        # Сохраняем город
         update_user(msg.chat.id, city=city, timezone=tz)
         
-        # Кнопки для прогнозов и гороскопа
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
@@ -2135,107 +1482,7 @@ async def handle_city(msg: types.Message):
         error_msg = result[1] if len(result) > 1 else "❌ Город не найден"
         await msg.answer(f"{error_msg}\nНапиши, например: Москва")
 
-# Обработчик для обновления данных
-@dp.callback_query(F.data.startswith("refresh_"))
-async def refresh_weather(call: types.CallbackQuery):
-    """Обновить данные о погоде"""
-    await call.answer("Обновляю данные...")
-    
-    # Извлекаем координаты из callback_data
-    parts = call.data.split('_')
-    lat = float(parts[1])
-    lon = float(parts[2])
-    
-    # Получаем обновленные данные с user_id
-    coords = {"lat": lat, "lon": lon}
-    result = await get_weather_with_details(coords, call.from_user.id)
-    
-    if result[0]:
-        report, city, tz, _, coord, full_data = result
-        
-        # Создаем клавиатуру с кнопками
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
-            ],
-            [
-                InlineKeyboardButton(text="📅 На завтра", callback_data=f"tomorrow_{coord['lat']}_{coord['lon']}"),
-                InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
-            ],
-            [
-                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
-            ]
-        ])
-        
-        await call.message.edit_text(f"📍 {city}\n\n{report}", 
-                                    reply_markup=kb,
-                                    parse_mode="HTML")
-    else:
-        await call.message.edit_text("❌ Не удалось обновить погоду")
-
-# Обработчик для прогноза на завтра
-@dp.callback_query(F.data.startswith("tomorrow_"))
-async def show_tomorrow_forecast(call: types.CallbackQuery):
-    """Показать прогноз на завтра"""
-    await call.answer("Загружаю прогноз на завтра...")
-    
-    # Извлекаем координаты из callback_data
-    parts = call.data.split('_')
-    lat = float(parts[1])
-    lon = float(parts[2])
-    
-    # Получаем прогноз на завтра
-    forecast, error = await get_tomorrow_forecast(lat, lon)
-    
-    if forecast:
-        # Создаем клавиатуру для возврата
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🔙 К текущей погоде", callback_data=f"refresh_{lat}_{lon}")
-            ],
-            [
-                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
-            ]
-        ])
-        
-        await call.message.edit_text(forecast, 
-                                    reply_markup=kb,
-                                    parse_mode="HTML")
-    else:
-        await call.message.answer(error or "❌ Не удалось получить прогноз")
-
-# Обработчик для прогноза на неделю
-@dp.callback_query(F.data.startswith("week_"))
-async def show_weekly_forecast(call: types.CallbackQuery):
-    """Показать прогноз на неделю"""
-    await call.answer("Загружаю прогноз на неделю...")
-    
-    # Извлекаем координаты из callback_data
-    parts = call.data.split('_')
-    lat = float(parts[1])
-    lon = float(parts[2])
-    
-    # Получаем прогноз на неделю
-    forecast, error = await get_weekly_forecast(lat, lon)
-    
-    if forecast:
-        # Создаем клавиатуру для возврата
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🔙 К текущей погоде", callback_data=f"refresh_{lat}_{lon}")
-            ],
-            [
-                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
-            ]
-        ])
-        
-        await call.message.edit_text(forecast, 
-                                    reply_markup=kb,
-                                    parse_mode="HTML")
-    else:
-        await call.message.answer(error or "❌ Не удалось получить прогноз")
-
-# --- РАССЫЛКА ПО МЕСТНОМУ ВРЕМЕНИ ---
+# --- РАССЫЛКА ---
 async def mailing():
     while True:
         try:
@@ -2258,13 +1505,11 @@ async def mailing():
                     user_local = now_utc + datetime.timedelta(seconds=tz_off)
                     if user_local.hour == target_h:
                         logger.info(f"Отправка погоды пользователю {u_id} в {user_local.hour}:00")
-                        # Передаем user_id
                         result = await get_weather_with_details(city, u_id)
                         
                         if result[0]:
                             report, _, _, _, coord, _ = result
                             
-                            # Кнопки для прогнозов и гороскопа
                             kb = InlineKeyboardMarkup(inline_keyboard=[
                                 [
                                     InlineKeyboardButton(text="🔄 Обновить", callback_data=f"refresh_{coord['lat']}_{coord['lon']}")
@@ -2295,6 +1540,7 @@ async def mailing():
             logger.error(f"Ошибка в рассылке: {e}")
             await asyncio.sleep(60)
 
+# --- ЗАПУСК ---
 async def main():
     logger.info("=" * 50)
     logger.info("🚀 ЗАПУСК БОТА ПОГОДЫ С ГОРОСКОПОМ")
@@ -2303,26 +1549,26 @@ async def main():
     init_db()
     migrate_db()
     
-    # Проверяем API ключ
     logger.info("\n🔑 ПРОВЕРКА API КЛЮЧА OPENWEATHERMAP:")
     api_ok, api_message = await test_api_key()
     logger.info(api_message)
     
     if not api_ok:
         logger.error("\n❌ ПРОБЛЕМА С API КЛЮЧОМ!")
-        logger.error("Как получить правильный ключ:")
-        logger.error("1. Зарегистрируйтесь на https://openweathermap.org")
-        logger.error("2. Перейдите в раздел API Keys")
-        logger.error("3. Скопируйте ключ (должен выглядеть как '1a2b3c4d5e6f7g8h9i0j')")
-        logger.error("4. Вставьте его в код или в переменную окружения WEATHER_API_KEY")
     
-    # Проверяем подключение к NOAA
     logger.info("\n🛰️ ПРОВЕРКА ПОДКЛЮЧЕНИЯ К NOAA:")
     geomagnetic = await get_geomagnetic_data()
     if geomagnetic:
         logger.info(f"✅ Подключение к NOAA работает, текущий Kp: {geomagnetic[0]}")
     else:
-        logger.warning("⚠️ Не удалось подключиться к NOAA, магнитные бури будут недоступны")
+        logger.warning("⚠️ Не удалось подключиться к NOAA")
+    
+    logger.info("\n🔮 ПРОВЕРКА API ГОРОСКОПА:")
+    horoscope_test = await get_horoscope("aries", "today")
+    if horoscope_test:
+        logger.info("✅ API гороскопа работает!")
+    else:
+        logger.warning("⚠️ API гороскопа временно недоступно")
     
     logger.info("\n" + "=" * 50)
     logger.info("✅ БОТ ГОТОВ К РАБОТЕ!")
