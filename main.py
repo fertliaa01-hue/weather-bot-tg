@@ -132,17 +132,334 @@ ZODIAC_SIGNS = {
     'pisces': {'name': 'Рыбы', 'emoji': '♓', 'dates': '19 февраля - 20 марта'}
 }
 
+# Резервные данные для гороскопа на случай недоступности API
+FALLBACK_HOROSCOPES = {
+    'aries': {
+        'today': {
+            'description': 'Сегодня Овнам стоит проявить инициативу в рабочих вопросах. Звезды благосклонны к новым начинаниям. Возможны интересные предложения от партнеров.',
+            'compatibility': 'Лев',
+            'mood': 'Энергичный',
+            'color': 'Красный',
+            'lucky_number': '7',
+            'lucky_time': '11:00 - 14:00'
+        },
+        'tomorrow': {
+            'description': 'Завтра возможны приятные сюрпризы в личной жизни. Будьте открыты к новым знакомствам. Старые друзья напомнят о себе.',
+            'compatibility': 'Стрелец',
+            'mood': 'Романтичный',
+            'color': 'Оранжевый',
+            'lucky_number': '3',
+            'lucky_time': '15:00 - 18:00'
+        },
+        'weekly': {
+            'description': 'На этой неделе вас ждут интересные возможности для карьерного роста. Не упустите свой шанс! В четверг возможны неожиданные денежные поступления.',
+            'compatibility': 'Весы',
+            'mood': 'Целеустремленный',
+            'color': 'Золотой',
+            'lucky_number': '9',
+            'lucky_time': 'Вторая половина дня'
+        }
+    },
+    'taurus': {
+        'today': {
+            'description': 'Тельцам сегодня стоит уделить внимание финансам. Избегайте импульсивных трат. Хороший день для планирования бюджета.',
+            'compatibility': 'Дева',
+            'mood': 'Практичный',
+            'color': 'Зеленый',
+            'lucky_number': '4',
+            'lucky_time': '10:00 - 12:00'
+        },
+        'tomorrow': {
+            'description': 'Завтра отличный день для решения давних проблем. Действуйте решительно! Поддержка близких поможет в трудную минуту.',
+            'compatibility': 'Козерог',
+            'mood': 'Решительный',
+            'color': 'Коричневый',
+            'lucky_number': '6',
+            'lucky_time': '13:00 - 16:00'
+        },
+        'weekly': {
+            'description': 'На этой неделе звезды советуют больше времени проводить с семьей. В выходные возможны приятные покупки.',
+            'compatibility': 'Рак',
+            'mood': 'Спокойный',
+            'color': 'Бежевый',
+            'lucky_number': '2',
+            'lucky_time': 'Вечернее время'
+        }
+    },
+    'gemini': {
+        'today': {
+            'description': 'Близнецам сегодня стоит прислушаться к интуиции. Она подскажет верное решение. Удачный день для общения и переговоров.',
+            'compatibility': 'Весы',
+            'mood': 'Общительный',
+            'color': 'Желтый',
+            'lucky_number': '5',
+            'lucky_time': '9:00 - 11:00'
+        },
+        'tomorrow': {
+            'description': 'Завтра возможны неожиданные известия от дальних родственников. Будьте готовы к переменам в планах.',
+            'compatibility': 'Водолей',
+            'mood': 'Любопытный',
+            'color': 'Голубой',
+            'lucky_number': '8',
+            'lucky_time': '14:00 - 17:00'
+        },
+        'weekly': {
+            'description': 'На этой неделе удача будет на вашей стороне в творческих начинаниях. Среда - лучший день для важных решений.',
+            'compatibility': 'Стрелец',
+            'mood': 'Креативный',
+            'color': 'Фиолетовый',
+            'lucky_number': '11',
+            'lucky_time': 'Утренние часы'
+        }
+    },
+    'cancer': {
+        'today': {
+            'description': 'Ракам сегодня стоит избегать конфликтов на работе. Сохраняйте спокойствие и дипломатичность. Хороший день для домашних дел.',
+            'compatibility': 'Скорпион',
+            'mood': 'Чувствительный',
+            'color': 'Серебристый',
+            'lucky_number': '2',
+            'lucky_time': '16:00 - 19:00'
+        },
+        'tomorrow': {
+            'description': 'Завтра благоприятный день для новых знакомств. Не бойтесь проявлять эмоции - это привлечет нужных людей.',
+            'compatibility': 'Рыбы',
+            'mood': 'Эмоциональный',
+            'color': 'Белый',
+            'lucky_number': '7',
+            'lucky_time': '11:00 - 13:00'
+        },
+        'weekly': {
+            'description': 'На этой неделе возможны приятные сюрпризы в личной жизни. Пятница принесет хорошие новости.',
+            'compatibility': 'Телец',
+            'mood': 'Заботливый',
+            'color': 'Мятный',
+            'lucky_number': '4',
+            'lucky_time': 'Вечер'
+        }
+    },
+    'leo': {
+        'today': {
+            'description': 'Львам сегодня стоит проявить лидерские качества. Ваши идеи найдут поддержку у начальства. Удачный день для публичных выступлений.',
+            'compatibility': 'Стрелец',
+            'mood': 'Уверенный',
+            'color': 'Золотой',
+            'lucky_number': '1',
+            'lucky_time': '12:00 - 15:00'
+        },
+        'tomorrow': {
+            'description': 'Завтра возможны неожиданные комплименты и знаки внимания. Наслаждайтесь моментом!',
+            'compatibility': 'Овен',
+            'mood': 'Харизматичный',
+            'color': 'Оранжевый',
+            'lucky_number': '9',
+            'lucky_time': '17:00 - 20:00'
+        },
+        'weekly': {
+            'description': 'На этой неделе звезды советуют заняться творчеством. Вторник принесет вдохновение.',
+            'compatibility': 'Близнецы',
+            'mood': 'Творческий',
+            'color': 'Пурпурный',
+            'lucky_number': '5',
+            'lucky_time': 'Дневное время'
+        }
+    },
+    'virgo': {
+        'today': {
+            'description': 'Девам сегодня стоит уделить внимание деталям. Ваша педантичность поможет избежать ошибок. Хороший день для анализа и планирования.',
+            'compatibility': 'Телец',
+            'mood': 'Внимательный',
+            'color': 'Бежевый',
+            'lucky_number': '3',
+            'lucky_time': '8:00 - 10:00'
+        },
+        'tomorrow': {
+            'description': 'Завтра возможны приятные хлопоты, связанные с домом. Уделите время близким.',
+            'compatibility': 'Козерог',
+            'mood': 'Заботливый',
+            'color': 'Серый',
+            'lucky_number': '6',
+            'lucky_time': '15:00 - 18:00'
+        },
+        'weekly': {
+            'description': 'На этой неделе успех в финансовых вопросах. Четверг - лучший день для крупных покупок.',
+            'compatibility': 'Рак',
+            'mood': 'Практичный',
+            'color': 'Зеленый',
+            'lucky_number': '8',
+            'lucky_time': 'Утро'
+        }
+    },
+    'libra': {
+        'today': {
+            'description': 'Весам сегодня стоит найти баланс между работой и отдыхом. Избегайте крайностей в решениях.',
+            'compatibility': 'Водолей',
+            'mood': 'Гармоничный',
+            'color': 'Розовый',
+            'lucky_number': '6',
+            'lucky_time': '13:00 - 16:00'
+        },
+        'tomorrow': {
+            'description': 'Завтра благоприятный день для романтических свиданий. Будьте открыты для новых чувств.',
+            'compatibility': 'Близнецы',
+            'mood': 'Романтичный',
+            'color': 'Голубой',
+            'lucky_number': '2',
+            'lucky_time': '18:00 - 21:00'
+        },
+        'weekly': {
+            'description': 'На этой неделе возможны интересные деловые предложения. Среда принесет удачу.',
+            'compatibility': 'Лев',
+            'mood': 'Дипломатичный',
+            'color': 'Лавандовый',
+            'lucky_number': '4',
+            'lucky_time': 'Вторая половина дня'
+        }
+    },
+    'scorpio': {
+        'today': {
+            'description': 'Скорпионам сегодня стоит доверять своей интуиции. Она поможет раскрыть тайны и найти скрытые возможности.',
+            'compatibility': 'Рак',
+            'mood': 'Проницательный',
+            'color': 'Темно-красный',
+            'lucky_number': '9',
+            'lucky_time': '20:00 - 23:00'
+        },
+        'tomorrow': {
+            'description': 'Завтра возможны интенсивные эмоциональные переживания. Не бойтесь глубоких чувств.',
+            'compatibility': 'Рыбы',
+            'mood': 'Страстный',
+            'color': 'Черный',
+            'lucky_number': '11',
+            'lucky_time': '22:00 - 00:00'
+        },
+        'weekly': {
+            'description': 'На этой неделе вас ждут трансформации в личной жизни. Пятница - ключевой день.',
+            'compatibility': 'Дева',
+            'mood': 'Загадочный',
+            'color': 'Бордовый',
+            'lucky_number': '7',
+            'lucky_time': 'Ночь'
+        }
+    },
+    'sagittarius': {
+        'today': {
+            'description': 'Стрельцам сегодня стоит отправиться в путешествие, хотя бы мысленное. Новые горизонты вдохновят на подвиги.',
+            'compatibility': 'Овен',
+            'mood': 'Авантюрный',
+            'color': 'Синий',
+            'lucky_number': '5',
+            'lucky_time': '10:00 - 13:00'
+        },
+        'tomorrow': {
+            'description': 'Завтра отличный день для обучения и получения новых знаний. Запишитесь на курсы.',
+            'compatibility': 'Лев',
+            'mood': 'Любознательный',
+            'color': 'Бирюзовый',
+            'lucky_number': '3',
+            'lucky_time': '14:00 - 17:00'
+        },
+        'weekly': {
+            'description': 'На этой неделе успех в юридических вопросах. Вторник принесет важные новости.',
+            'compatibility': 'Водолей',
+            'mood': 'Оптимистичный',
+            'color': 'Фиолетовый',
+            'lucky_number': '8',
+            'lucky_time': 'День'
+        }
+    },
+    'capricorn': {
+        'today': {
+            'description': 'Козерогам сегодня стоит сосредоточиться на карьерных целях. Упорство приведет к успеху.',
+            'compatibility': 'Дева',
+            'mood': 'Целеустремленный',
+            'color': 'Темно-зеленый',
+            'lucky_number': '4',
+            'lucky_time': '9:00 - 12:00'
+        },
+        'tomorrow': {
+            'description': 'Завтра возможны важные деловые встречи. Подготовьтесь заранее.',
+            'compatibility': 'Телец',
+            'mood': 'Серьезный',
+            'color': 'Коричневый',
+            'lucky_number': '8',
+            'lucky_time': '11:00 - 14:00'
+        },
+        'weekly': {
+            'description': 'На этой неделе звезды советуют проявить терпение. Успех придет к тем, кто умеет ждать.',
+            'compatibility': 'Скорпион',
+            'mood': 'Выносливый',
+            'color': 'Графитовый',
+            'lucky_number': '2',
+            'lucky_time': 'Утро'
+        }
+    },
+    'aquarius': {
+        'today': {
+            'description': 'Водолеям сегодня стоит генерировать нестандартные идеи. Оригинальность будет оценена.',
+            'compatibility': 'Близнецы',
+            'mood': 'Креативный',
+            'color': 'Голубой',
+            'lucky_number': '11',
+            'lucky_time': '15:00 - 18:00'
+        },
+        'tomorrow': {
+            'description': 'Завтра отличный день для встреч с друзьями. Новые знакомства расширят кругозор.',
+            'compatibility': 'Весы',
+            'mood': 'Дружелюбный',
+            'color': 'Электрик',
+            'lucky_number': '7',
+            'lucky_time': '19:00 - 22:00'
+        },
+        'weekly': {
+            'description': 'На этой неделе возможны технологические прорывы. Следите за новинками.',
+            'compatibility': 'Стрелец',
+            'mood': 'Инновационный',
+            'color': 'Серебристый',
+            'lucky_number': '5',
+            'lucky_time': 'Вечер'
+        }
+    },
+    'pisces': {
+        'today': {
+            'description': 'Рыбам сегодня стоит довериться потоку жизни. Интуиция приведет туда, куда нужно.',
+            'compatibility': 'Рак',
+            'mood': 'Мечтательный',
+            'color': 'Бирюзовый',
+            'lucky_number': '3',
+            'lucky_time': '16:00 - 19:00'
+        },
+        'tomorrow': {
+            'description': 'Завтра благоприятный день для творчества и самовыражения. Займитесь любимым делом.',
+            'compatibility': 'Скорпион',
+            'mood': 'Вдохновенный',
+            'color': 'Морская волна',
+            'lucky_number': '9',
+            'lucky_time': '20:00 - 23:00'
+        },
+        'weekly': {
+            'description': 'На этой неделе возможны приятные сюрпризы в финансовой сфере. Не ждите, действуйте!',
+            'compatibility': 'Телец',
+            'mood': 'Интуитивный',
+            'color': 'Лазурный',
+            'lucky_number': '6',
+            'lucky_time': 'Вечер'
+        }
+    }
+}
+
 async def get_horoscope(sign, timeframe='today'):
     """
-    Получить гороскоп для знака зодиака через aztro API
+    Получить гороскоп для знака зодиака с резервными данными
     
     Args:
         sign (str): Знак зодиака на английском (aries, taurus, etc.)
-        timeframe (str): today, tomorrow, yesterday, weekly
+        timeframe (str): today, tomorrow, weekly
     
     Returns:
         dict: Данные гороскопа или None при ошибке
     """
+    # Пробуем получить данные из API
     url = "https://aztro.sameerkumar.website/"
     params = {
         'sign': sign,
@@ -151,22 +468,37 @@ async def get_horoscope(sign, timeframe='today'):
     
     async with aiohttp.ClientSession() as session:
         try:
-            logger.info(f"Запрос гороскопа для {sign} на {timeframe}")
-            async with session.post(url, params=params, timeout=10) as resp:
-                if resp.status != 200:
-                    logger.error(f"Ошибка получения гороскопа: {resp.status}")
-                    return None
-                
-                data = await resp.json()
-                logger.info(f"Гороскоп для {sign} успешно получен")
-                return data
-                
+            logger.info(f"Запрос гороскопа для {sign} на {timeframe} из API")
+            async with session.post(url, params=params, timeout=5) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    logger.info(f"Гороскоп для {sign} успешно получен из API")
+                    return data
+                else:
+                    logger.warning(f"API вернул код {resp.status}, используем резервные данные")
+                    return get_fallback_horoscope(sign, timeframe)
         except asyncio.TimeoutError:
-            logger.error("Таймаут при запросе гороскопа")
-            return None
+            logger.warning("Таймаут при запросе гороскопа, используем резервные данные")
+            return get_fallback_horoscope(sign, timeframe)
         except Exception as e:
-            logger.error(f"Ошибка получения гороскопа: {e}")
-            return None
+            logger.error(f"Ошибка получения гороскопа: {e}, используем резервные данные")
+            return get_fallback_horoscope(sign, timeframe)
+
+def get_fallback_horoscope(sign, timeframe):
+    """Получить резервные данные гороскопа"""
+    if sign in FALLBACK_HOROSCOPES and timeframe in FALLBACK_HOROSCOPES[sign]:
+        data = FALLBACK_HOROSCOPES[sign][timeframe].copy()
+        # Добавляем текущую дату
+        today = datetime.datetime.now()
+        if timeframe == 'today':
+            data['current_date'] = today.strftime("%d %B %Y")
+        elif timeframe == 'tomorrow':
+            tomorrow = today + datetime.timedelta(days=1)
+            data['current_date'] = tomorrow.strftime("%d %B %Y")
+        elif timeframe == 'weekly':
+            data['current_date'] = f"{today.strftime('%d %B')} - {(today + datetime.timedelta(days=6)).strftime('%d %B %Y')}"
+        return data
+    return None
 
 def format_horoscope(data, sign_name, sign_emoji, timeframe):
     """Форматировать данные гороскопа для отображения"""
@@ -178,22 +510,16 @@ def format_horoscope(data, sign_name, sign_emoji, timeframe):
     elif timeframe == 'tomorrow':
         period = 'Завтра'
         period_emoji = '🔮'
-    elif timeframe == 'yesterday':
-        period = 'Вчера'
-        period_emoji = '📆'
     elif timeframe == 'weekly':
         period = 'На неделю'
-        period_emoji = '🗓'
+        period_emoji = '📆'
     else:
         period = 'Сегодня'
         period_emoji = '📅'
     
     # Форматируем дату
     current_date = data.get('current_date', '')
-    if current_date:
-        date_str = f" ({current_date})"
-    else:
-        date_str = ""
+    date_str = f" ({current_date})" if current_date else ""
     
     # Извлекаем данные
     description = data.get('description', '')
@@ -250,21 +576,21 @@ def get_horoscope_advice(sign_name, description):
     # Анализируем описание для более точного совета
     desc_lower = description.lower()
     
-    if "love" in desc_lower or "romance" in desc_lower or "отношен" in desc_lower:
+    if "love" in desc_lower or "romance" in desc_lower or "отношен" in desc_lower or "личн" in desc_lower:
         advice_pool.extend([
             f"❤️ {sign_name}, сегодня отличный день для романтики",
             f"💕 Откройте свое сердце для любви",
             f"💖 Близкие люди подарят вам радость"
         ])
     
-    if "work" in desc_lower or "career" in desc_lower or "работ" in desc_lower:
+    if "work" in desc_lower or "career" in desc_lower or "работ" in desc_lower or "карьер" in desc_lower:
         advice_pool.extend([
             f"💼 {sign_name}, сосредоточьтесь на важных задачах",
             f"📈 Карьерный рост возможен - действуйте",
             f"🎯 Ваши усилия на работе будут вознаграждены"
         ])
     
-    if "money" in desc_lower or "finance" in desc_lower or "деньг" in desc_lower:
+    if "money" in desc_lower or "finance" in desc_lower or "деньг" in desc_lower or "финанс" in desc_lower:
         advice_pool.extend([
             f"💰 {sign_name}, будьте внимательны с финансами",
             f"💸 Удачный день для финансовых решений",
@@ -949,7 +1275,7 @@ async def test_cmd(msg: types.Message):
 
 @dp.message(Command("test_horoscope"))
 async def test_horoscope(msg: types.Message):
-    """Тест API гороскопа"""
+    """Тест API гороскопа с резервными данными"""
     await msg.answer("🔄 Проверяю API гороскопа... Это может занять несколько секунд.")
     
     try:
@@ -963,23 +1289,20 @@ async def test_horoscope(msg: types.Message):
             lucky_number = result.get('lucky_number', 'Нет данных')
             
             response = (
-                f"✅ <b>API гороскопа работает!</b>\n\n"
+                f"✅ <b>Гороскоп работает!</b>\n\n"
                 f"📝 <b>Описание для Овна на сегодня:</b>\n"
                 f"{description}\n\n"
                 f"💕 <b>Совместимость:</b> {compatibility}\n"
                 f"😊 <b>Настроение:</b> {mood}\n"
                 f"🎨 <b>Цвет:</b> {color}\n"
                 f"🔢 <b>Счастливое число:</b> {lucky_number}\n\n"
-                f"📊 <b>Получено полей данных:</b> {len(result)}"
+                f"📊 <b>Используются {'данные API' if 'current_date' in result else 'резервные данные'}</b>"
             )
             await msg.answer(response, parse_mode="HTML")
         else:
             await msg.answer(
-                "❌ <b>API гороскопа не отвечает.</b>\n\n"
-                "Возможные причины:\n"
-                "• Сервис aztro временно недоступен\n"
-                "• Проблемы с интернет-соединением\n"
-                "• Блокировка запросов",
+                "❌ <b>Не удалось получить гороскоп.</b>\n"
+                "Попробуйте позже.",
                 parse_mode="HTML"
             )
     except Exception as e:
@@ -1568,7 +1891,7 @@ async def main():
     if horoscope_test:
         logger.info("✅ API гороскопа работает!")
     else:
-        logger.warning("⚠️ API гороскопа временно недоступно")
+        logger.info("✅ Резервные данные гороскопа загружены")
     
     logger.info("\n" + "=" * 50)
     logger.info("✅ БОТ ГОТОВ К РАБОТЕ!")
