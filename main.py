@@ -126,7 +126,7 @@ JOKE_TYPES = {
 
 async def get_russian_joke(joke_type='random'):
     """
-    Получить русский анекдот через anecAPI
+    Получить русский анекдот через anecapi
     
     Args:
         joke_type (str): 'random', 'modern', 'soviet'
@@ -141,24 +141,24 @@ async def get_russian_joke(joke_type='random'):
         loop = asyncio.get_event_loop()
         
         if joke_type == 'modern':
-            joke = await loop.run_in_executor(None, anecAPI.modern_joke)
+            joke = await loop.run_in_executor(None, anecapi.modern_joke)
         elif joke_type == 'soviet':
-            joke = await loop.run_in_executor(None, anecAPI.soviet_joke)
+            joke = await loop.run_in_executor(None, anecapi.soviet_joke)
         else:  # random
-            joke = await loop.run_in_executor(None, anecAPI.random_joke)
+            joke = await loop.run_in_executor(None, anecapi.random_joke)
         
         if joke and isinstance(joke, str) and len(joke) > 5:
             logger.info(f"✅ Русский анекдот получен, длина: {len(joke)} символов")
             return joke
         else:
-            logger.error("❌ anecAPI вернул пустой или некорректный результат")
+            logger.error("❌ anecapi вернул пустой или некорректный результат")
             return get_fallback_joke(joke_type)
             
     except ImportError:
-        logger.error("❌ Библиотека anecAPI не установлена. Установите: pip install -i https://test.pypi.org/simple/ anecapi==0.1.1")
+        logger.error("❌ Библиотека anecapi не установлена. Установите: pip install -i https://test.pypi.org/simple/ anecapi==0.1.1")
         return get_fallback_joke(joke_type)
     except AttributeError as e:
-        logger.error(f"❌ Ошибка вызова функции anecAPI: {e}")
+        logger.error(f"❌ Ошибка вызова функции anecapi: {e}")
         return get_fallback_joke(joke_type)
     except Exception as e:
         logger.error(f"❌ Ошибка при получении анекдота: {e}")
