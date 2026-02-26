@@ -6,6 +6,7 @@ import logging
 import os
 import math
 import random
+import anecapi  # Библиотека для русских анекдотов
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
@@ -116,98 +117,109 @@ def get_user_zodiac(user_id):
     conn.close()
     return result[0] if result and result[0] else None
 
-# --- ФУНКЦИИ ДЛЯ АНЕКДОТОВ ---
-JOKE_CATEGORIES = {
-    'general': '🔹 Обычные',
-    'programming': '💻 Программистские',
-    'dad': '👨 Отеческие',
-    'knock-knock': '🚪 Стук в дверь'
+# --- ФУНКЦИИ ДЛЯ АНЕКДОТОВ (РУССКИЕ) ---
+JOKE_TYPES = {
+    'random': '🎲 Случайный',
+    'modern': '📱 Современный',
+    'soviet': '🕰 Советский'
 }
 
-async def get_random_joke(category='random'):
+async def get_russian_joke(joke_type='random'):
     """
-    Получить случайный анекдот из Official Joke API
+    Получить русский анекдот через anecAPI
     
     Args:
-        category (str): 'random', 'general', 'programming', 'dad', 'knock-knock'
+        joke_type (str): 'random', 'modern', 'soviet'
     
     Returns:
-        str: Отформатированный анекдот или None при ошибке
+        str: Анекдот на русском или None при ошибке
     """
-    if category == 'random':
-        url = "https://official-joke-api.appspot.com/jokes/random"
-    else:
-        url = f"https://official-joke-api.appspot.com/jokes/{category}/random"
+    try:
+        logger.info(f"Запрос русского анекдота, тип: {joke_type}")
+        
+        # Запускаем в отдельном потоке, чтобы не блокировать асинхронность
+        loop = asyncio.get_event_loop()
+        
+        if joke_type == 'modern':
+            joke = await loop.run_in_executor(None, anecapi.modern_joke)
+        elif joke_type == 'soviet':
+            joke = await loop.run_in_executor(None, anecapi.soviet_joke)
+        else:  # random
+            joke = await loop.run_in_executor(None, anecapi.random_joke)
+        
+        if joke and isinstance(joke, str) and len(joke) > 10:
+            logger.info(f"✅ Русский анекдот получен, длина: {len(joke)} символов")
+            return joke
+        else:
+            logger.error("❌ anecAPI вернул пустой или некорректный результат")
+            return get_fallback_joke(joke_type)
+            
+    except ImportError:
+        logger.error("❌ Библиотека anecapi не установлена. Установите: pip install anecapi")
+        return get_fallback_joke(joke_type)
+    except Exception as e:
+        logger.error(f"❌ Ошибка при получении анекдота: {e}")
+        return get_fallback_joke(joke_type)
+
+def get_fallback_joke(joke_type='random'):
+    """Запасные анекдоты на случай недоступности API"""
     
-    async with aiohttp.ClientSession() as session:
-        try:
-            logger.info(f"Запрос анекдота из категории {category}")
-            async with session.get(url, timeout=10) as resp:
-                if resp.status != 200:
-                    logger.error(f"Ошибка получения анекдота: {resp.status}")
-                    return None
-                
-                if category == 'random':
-                    data = await resp.json()
-                    jokes = [data]
-                else:
-                    data = await resp.json()
-                    jokes = data if isinstance(data, list) else [data]
-                
-                if jokes and len(jokes) > 0:
-                    joke = jokes[0]
-                    setup = joke.get('setup', '')
-                    punchline = joke.get('punchline', '')
-                    
-                    # Определяем эмодзи для категории
-                    category_emoji = {
-                        'general': '🔹',
-                        'programming': '💻',
-                        'dad': '👨',
-                        'knock-knock': '🚪'
-                    }.get(joke.get('type', ''), '😄')
-                    
-                    return f"{category_emoji} <b>Анекдот:</b>\n\n{setup}\n\n<i>{punchline}</i>"
-                
-                return None
-                
-        except asyncio.TimeoutError:
-            logger.error("Таймаут при запросе анекдота")
-            return None
-        except Exception as e:
-            logger.error(f"Ошибка получения анекдота: {e}")
-            return None
+    fallback_jokes = {
+        'random': [
+            "Встречаются два программиста:\n— Как дела?\n— Да нормально...\n— А что такой грустный?\n— Да понимаешь, купил себе новый компьютер, а он не включается.\n— А почему не включается?\n— Да розетка сломалась...",
+            
+            "Приходит мужик к врачу:\n— Доктор, у меня что-то с памятью.\n— А конкретнее?\n— Что конкретнее?",
+            
+            "— Алло, это служба поддержки?\n— Да.\n— У меня компьютер не работает.\n— А вы пробовали перезагрузить?\n— Пробовал.\n— И что?\n— Теперь он вообще не включается.\n— А вы пробовали включить его в розетку?\n— А где она?",
+            
+            "Стоит программист на светофоре, ждет зеленый. Подходит бабушка:\n— Сынок, помоги перейти дорогу.\nПрограммист:\n— Извините, бабушка, я сейчас не могу, я в потоке.",
+            
+            "— Почему программисты путают Хэллоуин и Рождество?\n— Потому что Oct 31 == Dec 25."
+        ],
+        'modern': [
+            "Современная колыбельная:\n— Спи, малыш, не плачь.\n— Не буду.\n— Вот тебе айпад.\n— Буду.\n— Вот тебе айфон.\n— Буду.\n— Вот тебе макбук.\n— Буду.\n— Ну спи, хоть чуть-чуть.\n— Не буду.\n— А что ты хочешь?\n— Чтобы батарейка села...",
+            
+            "— Папа, а почему у нас дома так много техники?\n— Сынок, это потому что мама любит покупать всякие штуки.\n— А почему она их покупает?\n— Потому что у нее есть кредитка.\n— А почему у нее есть кредитка?\n— Потому что я работаю.\n— А почему ты работаешь?\n— Чтобы оплачивать кредитку...",
+            
+            "Звонок в техподдержку:\n— У меня не работает интернет.\n— А вы пробовали перезагрузить роутер?\n— Пробовал.\n— И что?\n— Он теперь мигает красным.\n— А кабель проверили?\n— Какой кабель?\n— Который от роутера к компьютеру.\n— А у меня ноутбук, там нет кабеля.\n— А как вы подключаетесь?\n— По воздуху.\n— ???"
+        ],
+        'soviet': [
+            "Советский анекдот:\n— Почему в СССР нет безработицы?\n— Потому что тех, кто не работает, сажают.\n— А тех, кто работает?\n— Тех тоже сажают, но на зарплату.",
+            
+            "Стоит очередь за колбасой. Подходит мужик:\n— Вы последний?\n— Нет, я первый, но за мной уже пол-Москвы стоит.",
+            
+            "— Почему в СССР все ходят строем?\n— Чтобы легче было считать, кого еще не посадили.",
+            
+            "Вовочка спрашивает отца:\n— Папа, а что такое дефицит?\n— Дефицит, сынок, это когда хочешь купить, а нечего.\n— А что такое изобилие?\n— А изобилие, сынок, это когда есть что купить, но не на что.",
+            
+            "— Почему в СССР нет анекдотов?\n— Как нет? А это что?\n— Это не анекдоты, это народное творчество."
+        ]
+    }
+    
+    # Выбираем случайный анекдот из нужной категории
+    if joke_type in fallback_jokes:
+        return random.choice(fallback_jokes[joke_type])
+    else:
+        return random.choice(fallback_jokes['random'])
 
 async def get_multiple_jokes(count=3):
     """Получить несколько случайных анекдотов"""
-    url = f"https://official-joke-api.appspot.com/jokes/ten"
+    jokes = []
+    for _ in range(count):
+        joke = await get_russian_joke('random')
+        if joke:
+            jokes.append(joke)
+        await asyncio.sleep(0.5)  # Небольшая задержка между запросами
     
-    async with aiohttp.ClientSession() as session:
-        try:
-            logger.info(f"Запрос {count} анекдотов")
-            async with session.get(url, timeout=10) as resp:
-                if resp.status != 200:
-                    return None
-                
-                data = await resp.json()
-                
-                if data and len(data) > 0:
-                    # Берем только первые count шуток
-                    selected = data[:count]
-                    result = "🎭 <b>Подборка анекдотов:</b>\n\n"
-                    
-                    for i, joke in enumerate(selected, 1):
-                        setup = joke.get('setup', '')
-                        punchline = joke.get('punchline', '')
-                        result += f"{i}. {setup}\n   <i>{punchline}</i>\n\n"
-                    
-                    return result
-                
-                return None
-                
-        except Exception as e:
-            logger.error(f"Ошибка получения нескольких анекдотов: {e}")
-            return None
+    if jokes:
+        result = "🎭 <b>Подборка анекдотов:</b>\n\n"
+        for i, joke in enumerate(jokes, 1):
+            # Обрезаем слишком длинные анекдоты для подборки
+            if len(joke) > 200:
+                joke = joke[:200] + "..."
+            result += f"{i}. {joke}\n\n"
+        return result
+    return None
 
 # --- ФУНКЦИИ ДЛЯ ГОРОСКОПА ---
 ZODIAC_SIGNS = {
@@ -1348,13 +1360,13 @@ async def help_cmd(msg: types.Message):
 /zodiac - Установить ваш знак зодиака
 /joke - Случайный анекдот
 /jokes - Подборка анекдотов (3 шт)
-/joke_categories - Категории анекдотов
+/joke_types - Типы анекдотов
 /uv - Информация об UV-индексе
 /magnet - Информация о магнитных бурях
 /moon - Информация о фазе луны
 /test - Проверить работу API погоды
 /test_horoscope - Проверить работу API гороскопа
-/test_joke - Проверить работу API анекдотов
+/test_joke - Проверить работу анекдотов
 
 <b>Как пользоваться:</b>
 1. Выберите время для рассылки
@@ -1408,19 +1420,19 @@ async def test_horoscope(msg: types.Message):
 
 @dp.message(Command("test_joke"))
 async def test_joke(msg: types.Message):
-    """Тест API анекдотов"""
-    await msg.answer("🔄 Проверяю API анекдотов...")
+    """Тест анекдотов"""
+    await msg.answer("🔄 Проверяю анекдоты...")
     
-    joke = await get_random_joke()
+    joke = await get_russian_joke('random')
     
     if joke:
         await msg.answer(
-            f"✅ <b>API анекдотов работает!</b>\n\n{joke}",
+            f"✅ <b>Анекдоты работают!</b>\n\n{joke}",
             parse_mode="HTML"
         )
     else:
         await msg.answer(
-            "❌ <b>API анекдотов временно недоступно.</b>\n"
+            "❌ <b>Не удалось получить анекдот.</b>\n"
             "Попробуйте позже.",
             parse_mode="HTML"
         )
@@ -1430,13 +1442,13 @@ async def random_joke(msg: types.Message):
     """Получить случайный анекдот"""
     await msg.answer("🔄 Ищу смешной анекдот...")
     
-    joke = await get_random_joke()
+    joke = await get_russian_joke('random')
     
     if joke:
         # Добавляем кнопку для следующего анекдота
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="😄 Ещё анекдот", callback_data="joke_random")],
-            [InlineKeyboardButton(text="📋 Категории", callback_data="joke_categories")]
+            [InlineKeyboardButton(text="📋 Типы анекдотов", callback_data="joke_types")]
         ])
         await msg.answer(joke, reply_markup=kb, parse_mode="HTML")
     else:
@@ -1462,24 +1474,23 @@ async def multiple_jokes(msg: types.Message):
     else:
         await msg.answer("😔 Не удалось получить подборку анекдотов. Попробуйте позже.")
 
-@dp.message(Command("joke_categories"))
-async def joke_categories(msg: types.Message):
-    """Показать категории анекдотов"""
+@dp.message(Command("joke_types"))
+async def joke_types(msg: types.Message):
+    """Показать типы анекдотов"""
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🔹 Обычные", callback_data="joke_category_general"),
-            InlineKeyboardButton(text="💻 Программисты", callback_data="joke_category_programming")
+            InlineKeyboardButton(text="🎲 Случайный", callback_data="joke_type_random"),
+            InlineKeyboardButton(text="📱 Современный", callback_data="joke_type_modern")
         ],
         [
-            InlineKeyboardButton(text="👨 Отеческие", callback_data="joke_category_dad"),
-            InlineKeyboardButton(text="🚪 Стук в дверь", callback_data="joke_category_knock-knock")
+            InlineKeyboardButton(text="🕰 Советский", callback_data="joke_type_soviet")
         ],
-        [InlineKeyboardButton(text="🎲 Случайная", callback_data="joke_random")]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")]
     ])
     
     await msg.answer(
-        "📋 <b>Категории анекдотов:</b>\n\n"
-        "Выберите категорию:",
+        "📋 <b>Типы анекдотов:</b>\n\n"
+        "Выберите тип:",
         reply_markup=kb,
         parse_mode="HTML"
     )
@@ -1795,6 +1806,20 @@ async def back_to_horoscope_menu(call: types.CallbackQuery):
     await horoscope_menu(call.message)
     await call.answer()
 
+@dp.callback_query(F.data == "back_to_main")
+async def back_to_main(call: types.CallbackQuery):
+    """Вернуться в главное меню"""
+    await call.answer()
+    await call.message.edit_text(
+        "🤖 <b>Главное меню</b>\n\n"
+        "Используйте команды:\n"
+        "/weather - Погода\n"
+        "/horoscope - Гороскоп\n"
+        "/joke - Анекдот\n"
+        "/help - Помощь",
+        parse_mode="HTML"
+    )
+
 @dp.callback_query(F.data == "back_to_zodiac")
 async def back_to_zodiac(call: types.CallbackQuery):
     await set_zodiac(call.message)
@@ -1931,21 +1956,19 @@ async def show_horoscope_for_sign(call, sign_en, period):
 async def joke_random_callback(call: types.CallbackQuery):
     await call.answer("Ищу анекдот...")
     
-    joke = await get_random_joke()
+    joke = await get_russian_joke('random')
     
     if joke:
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="😄 Ещё анекдот", callback_data="joke_random")],
-            [InlineKeyboardButton(text="📋 Категории", callback_data="joke_categories")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_previous")]
+            [InlineKeyboardButton(text="📋 Типы анекдотов", callback_data="joke_types")]
         ])
         await call.message.edit_text(joke, reply_markup=kb, parse_mode="HTML")
     else:
         await call.message.edit_text(
             "😔 Не удалось найти анекдот. Попробуйте позже.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="joke_random")],
-                [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_previous")]
+                [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="joke_random")]
             ])
         )
 
@@ -1958,7 +1981,7 @@ async def jokes_multiple_callback(call: types.CallbackQuery):
     if jokes:
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="😄 Ещё подборку", callback_data="jokes_multiple")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_previous")]
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")]
         ])
         await call.message.edit_text(jokes, reply_markup=kb, parse_mode="HTML")
     else:
@@ -1966,69 +1989,59 @@ async def jokes_multiple_callback(call: types.CallbackQuery):
             "😔 Не удалось получить подборку анекдотов.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="jokes_multiple")],
-                [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_previous")]
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")]
             ])
         )
 
-@dp.callback_query(F.data == "joke_categories")
-async def joke_categories_callback(call: types.CallbackQuery):
+@dp.callback_query(F.data == "joke_types")
+async def joke_types_callback(call: types.CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🔹 Обычные", callback_data="joke_category_general"),
-            InlineKeyboardButton(text="💻 Программисты", callback_data="joke_category_programming")
+            InlineKeyboardButton(text="🎲 Случайный", callback_data="joke_type_random"),
+            InlineKeyboardButton(text="📱 Современный", callback_data="joke_type_modern")
         ],
         [
-            InlineKeyboardButton(text="👨 Отеческие", callback_data="joke_category_dad"),
-            InlineKeyboardButton(text="🚪 Стук в дверь", callback_data="joke_category_knock-knock")
+            InlineKeyboardButton(text="🕰 Советский", callback_data="joke_type_soviet")
         ],
-        [InlineKeyboardButton(text="🎲 Случайная", callback_data="joke_random")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_previous")]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")]
     ])
     
     await call.message.edit_text(
-        "📋 <b>Категории анекдотов:</b>\n\n"
-        "Выберите категорию:",
+        "📋 <b>Типы анекдотов:</b>\n\n"
+        "Выберите тип:",
         reply_markup=kb,
         parse_mode="HTML"
     )
 
-@dp.callback_query(F.data.startswith("joke_category_"))
-async def joke_category_callback(call: types.CallbackQuery):
-    category = call.data.replace("joke_category_", "")
-    await call.answer(f"Ищу анекдот в категории {category}...")
+@dp.callback_query(F.data.startswith("joke_type_"))
+async def joke_type_callback(call: types.CallbackQuery):
+    joke_type = call.data.replace("joke_type_", "")
+    await call.answer(f"Ищу {joke_type} анекдот...")
     
-    joke = await get_random_joke(category)
+    joke = await get_russian_joke(joke_type)
     
     if joke:
+        type_names = {
+            'random': '🎲 Случайный',
+            'modern': '📱 Современный',
+            'soviet': '🕰 Советский'
+        }
+        type_name = type_names.get(joke_type, 'Случайный')
+        
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="🔄 Ещё в этой категории", callback_data=f"joke_category_{category}"),
-                InlineKeyboardButton(text="📋 Категории", callback_data="joke_categories")
+                InlineKeyboardButton(text="🔄 Ещё", callback_data=f"joke_type_{joke_type}"),
+                InlineKeyboardButton(text="📋 Типы", callback_data="joke_types")
             ]
         ])
-        await call.message.edit_text(joke, reply_markup=kb, parse_mode="HTML")
+        await call.message.edit_text(f"<b>{type_name}:</b>\n\n{joke}", reply_markup=kb, parse_mode="HTML")
     else:
         await call.message.edit_text(
-            f"😔 Не удалось найти анекдот в категории {category}.",
+            f"😔 Не удалось найти {joke_type} анекдот.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📋 Категории", callback_data="joke_categories")]
+                [InlineKeyboardButton(text="📋 Типы анекдотов", callback_data="joke_types")]
             ])
         )
-
-@dp.callback_query(F.data == "back_to_previous")
-async def back_to_previous(call: types.CallbackQuery):
-    """Вернуться к предыдущему меню (пытается определить контекст)"""
-    await call.answer()
-    # Просто отправляем сообщение с основным меню
-    await call.message.edit_text(
-        "🤖 <b>Главное меню</b>\n\n"
-        "Используйте команды:\n"
-        "/weather - Погода\n"
-        "/horoscope - Гороскоп\n"
-        "/joke - Анекдот\n"
-        "/help - Помощь",
-        parse_mode="HTML"
-    )
 
 # --- ОБРАБОТЧИКИ СООБЩЕНИЙ ---
 
@@ -2187,12 +2200,13 @@ async def main():
     else:
         logger.info("✅ Резервные данные гороскопа загружены")
     
-    logger.info("\n😄 ПРОВЕРКА API АНЕКДОТОВ:")
-    joke_test = await get_random_joke()
+    logger.info("\n😄 ПРОВЕРКА АНЕКДОТОВ:")
+    joke_test = await get_russian_joke('random')
     if joke_test:
-        logger.info("✅ API анекдотов работает!")
+        logger.info("✅ Анекдоты работают!")
+        logger.info(f"📝 Пример: {joke_test[:100]}...")
     else:
-        logger.warning("⚠️ API анекдотов временно недоступно")
+        logger.warning("⚠️ Проблема с получением анекдотов")
     
     logger.info("\n" + "=" * 50)
     logger.info("✅ БОТ ГОТОВ К РАБОТЕ!")
