@@ -1612,6 +1612,7 @@ async def help_cmd(msg: types.Message):
 /magnet - Информация о магнитных бурях
 /moon - Информация о фазе луны
 /test - Проверить работу API
+/test_horoscope - Проверить работу API гороскопа
 
 <b>Как пользоваться:</b>
 1. Выберите время для рассылки
@@ -1637,6 +1638,24 @@ async def test_cmd(msg: types.Message):
     await msg.answer("🔄 Проверка API ключа...")
     api_ok, api_message = await test_api_key()
     await msg.answer(api_message)
+
+@dp.message(Command("test_horoscope"))
+async def test_horoscope(msg: types.Message):
+    """Тест API гороскопа"""
+    await msg.answer("🔄 Проверяю API гороскопа...")
+    
+    # Тестируем для знака Овен
+    result = await get_horoscope("aries", "today")
+    
+    if result:
+        description = result.get('description', 'Нет описания')
+        await msg.answer(
+            f"✅ API работает!\n\n"
+            f"📝 Описание: {description[:200]}...\n\n"
+            f"📊 Все данные: {str(result)[:200]}..."
+        )
+    else:
+        await msg.answer("❌ API гороскопа не отвечает")
 
 @dp.message(Command("weather"))
 async def weather_cmd(msg: types.Message):
@@ -1852,10 +1871,10 @@ async def process_set_zodiac(call: types.CallbackQuery):
 async def process_horoscope(call: types.CallbackQuery):
     """Обработка запросов гороскопа"""
     data = call.data
+    logger.info(f"Получен callback: {data}")
     
     # Обработка периода
     if data == "horoscope_period_today":
-        # Сохраняем выбранный период во временной переменной
         await call.message.edit_text(
             "📅 Выберите знак зодиака для получения гороскопа на сегодня:",
             reply_markup=create_zodiac_keyboard("today")
@@ -1901,20 +1920,36 @@ async def process_horoscope(call: types.CallbackQuery):
     # Обработка выбора знака с периодом
     elif data.startswith("horoscope_sign_"):
         # Формат: horoscope_sign_{period}_{sign}
-        parts = data.split("_")
-        period = parts[2]
-        sign_en = parts[3]
-        
-        await call.answer("Загружаю гороскоп...")
-        await show_horoscope_for_sign(call, sign_en, period)
+        try:
+            parts = data.split("_")
+            if len(parts) >= 4:
+                period = parts[2]
+                sign_en = parts[3]
+                logger.info(f"Запрос гороскопа: знак={sign_en}, период={period}")
+                
+                await call.answer("Загружаю гороскоп...")
+                await show_horoscope_for_sign(call, sign_en, period)
+            else:
+                logger.error(f"Некорректный формат data: {data}")
+                await call.message.edit_text("❌ Ошибка формата данных")
+        except Exception as e:
+            logger.error(f"Ошибка при обработке horoscope_sign_: {e}")
+            await call.message.edit_text("❌ Ошибка при обработке запроса")
         return
     
     # Обработка выбора знака без периода (для главного меню)
-    else:
+    elif len(data.split("_")) == 2:
         sign_en = data.split("_")[1]
+        logger.info(f"Запрос гороскопа для знака {sign_en} на сегодня")
+        
         await call.answer("Загружаю гороскоп...")
         await show_horoscope_for_sign(call, sign_en, "today")
         return
+    
+    else:
+        logger.error(f"Неизвестный формат callback: {data}")
+        await call.message.edit_text("❌ Неизвестная команда")
+        await call.answer()
 
 @dp.callback_query(F.data == "horoscope_menu")
 async def horoscope_button(call: types.CallbackQuery):
@@ -1943,9 +1978,15 @@ def create_zodiac_keyboard(period):
     if row:
         zodiac_buttons.append(row)
     
-    # Добавляем кнопку возврата
+    # Добавляем кнопки для выбора периода и возврата
     zodiac_buttons.append([
-        InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_horoscope_menu")
+        InlineKeyboardButton(text="📅 Сегодня", callback_data="horoscope_period_today"),
+        InlineKeyboardButton(text="🔮 Завтра", callback_data="horoscope_period_tomorrow"),
+        InlineKeyboardButton(text="📆 Неделя", callback_data="horoscope_period_weekly")
+    ])
+    
+    zodiac_buttons.append([
+        InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_to_horoscope_menu")
     ])
     
     return InlineKeyboardMarkup(inline_keyboard=zodiac_buttons)
@@ -1953,10 +1994,20 @@ def create_zodiac_keyboard(period):
 async def show_horoscope_for_sign(call, sign_en, period):
     """Показать гороскоп для выбранного знака и периода"""
     
+    logger.info(f"show_horoscope_for_sign: sign_en={sign_en}, period={period}")
+    
     sign_data = ZODIAC_SIGNS.get(sign_en)
     if not sign_data:
-        await call.message.edit_text("❌ Ошибка: знак не найден")
+        logger.error(f"Знак не найден: {sign_en}")
+        await call.message.edit_text(
+            f"❌ Ошибка: знак '{sign_en}' не найден",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_horoscope_menu")]
+            ])
+        )
         return
+    
+    await call.message.edit_text(f"🔄 Получаю гороскоп для {sign_data['emoji']} {sign_data['name']}...")
     
     # Получаем гороскоп
     horoscope_data = await get_horoscope(sign_en, period)
