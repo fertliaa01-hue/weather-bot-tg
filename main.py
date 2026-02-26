@@ -116,6 +116,99 @@ def get_user_zodiac(user_id):
     conn.close()
     return result[0] if result and result[0] else None
 
+# --- ФУНКЦИИ ДЛЯ АНЕКДОТОВ ---
+JOKE_CATEGORIES = {
+    'general': '🔹 Обычные',
+    'programming': '💻 Программистские',
+    'dad': '👨 Отеческие',
+    'knock-knock': '🚪 Стук в дверь'
+}
+
+async def get_random_joke(category='random'):
+    """
+    Получить случайный анекдот из Official Joke API
+    
+    Args:
+        category (str): 'random', 'general', 'programming', 'dad', 'knock-knock'
+    
+    Returns:
+        str: Отформатированный анекдот или None при ошибке
+    """
+    if category == 'random':
+        url = "https://official-joke-api.appspot.com/jokes/random"
+    else:
+        url = f"https://official-joke-api.appspot.com/jokes/{category}/random"
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            logger.info(f"Запрос анекдота из категории {category}")
+            async with session.get(url, timeout=10) as resp:
+                if resp.status != 200:
+                    logger.error(f"Ошибка получения анекдота: {resp.status}")
+                    return None
+                
+                if category == 'random':
+                    data = await resp.json()
+                    jokes = [data]
+                else:
+                    data = await resp.json()
+                    jokes = data if isinstance(data, list) else [data]
+                
+                if jokes and len(jokes) > 0:
+                    joke = jokes[0]
+                    setup = joke.get('setup', '')
+                    punchline = joke.get('punchline', '')
+                    
+                    # Определяем эмодзи для категории
+                    category_emoji = {
+                        'general': '🔹',
+                        'programming': '💻',
+                        'dad': '👨',
+                        'knock-knock': '🚪'
+                    }.get(joke.get('type', ''), '😄')
+                    
+                    return f"{category_emoji} <b>Анекдот:</b>\n\n{setup}\n\n<i>{punchline}</i>"
+                
+                return None
+                
+        except asyncio.TimeoutError:
+            logger.error("Таймаут при запросе анекдота")
+            return None
+        except Exception as e:
+            logger.error(f"Ошибка получения анекдота: {e}")
+            return None
+
+async def get_multiple_jokes(count=3):
+    """Получить несколько случайных анекдотов"""
+    url = f"https://official-joke-api.appspot.com/jokes/ten"
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            logger.info(f"Запрос {count} анекдотов")
+            async with session.get(url, timeout=10) as resp:
+                if resp.status != 200:
+                    return None
+                
+                data = await resp.json()
+                
+                if data and len(data) > 0:
+                    # Берем только первые count шуток
+                    selected = data[:count]
+                    result = "🎭 <b>Подборка анекдотов:</b>\n\n"
+                    
+                    for i, joke in enumerate(selected, 1):
+                        setup = joke.get('setup', '')
+                        punchline = joke.get('punchline', '')
+                        result += f"{i}. {setup}\n   <i>{punchline}</i>\n\n"
+                    
+                    return result
+                
+                return None
+                
+        except Exception as e:
+            logger.error(f"Ошибка получения нескольких анекдотов: {e}")
+            return None
+
 # --- ФУНКЦИИ ДЛЯ ГОРОСКОПА ---
 ZODIAC_SIGNS = {
     'aries': {'name': 'Овен', 'emoji': '♈', 'dates': '21 марта - 19 апреля'},
@@ -1253,17 +1346,22 @@ async def help_cmd(msg: types.Message):
 /weather - Показать погоду для сохраненного города
 /horoscope - Показать меню гороскопа
 /zodiac - Установить ваш знак зодиака
+/joke - Случайный анекдот
+/jokes - Подборка анекдотов (3 шт)
+/joke_categories - Категории анекдотов
 /uv - Информация об UV-индексе
 /magnet - Информация о магнитных бурях
 /moon - Информация о фазе луны
 /test - Проверить работу API погоды
 /test_horoscope - Проверить работу API гороскопа
+/test_joke - Проверить работу API анекдотов
 
 <b>Как пользоваться:</b>
 1. Выберите время для рассылки
 2. Отправьте свою локацию или название города
 3. Получайте ежедневную погоду с деталями
 4. Используйте /horoscope для гороскопа
+5. Используйте /joke для анекдота
     """
     await msg.answer(help_text, parse_mode="HTML")
 
@@ -1308,6 +1406,84 @@ async def test_horoscope(msg: types.Message):
     except Exception as e:
         await msg.answer(f"❌ <b>Ошибка при запросе:</b>\n{str(e)[:200]}", parse_mode="HTML")
 
+@dp.message(Command("test_joke"))
+async def test_joke(msg: types.Message):
+    """Тест API анекдотов"""
+    await msg.answer("🔄 Проверяю API анекдотов...")
+    
+    joke = await get_random_joke()
+    
+    if joke:
+        await msg.answer(
+            f"✅ <b>API анекдотов работает!</b>\n\n{joke}",
+            parse_mode="HTML"
+        )
+    else:
+        await msg.answer(
+            "❌ <b>API анекдотов временно недоступно.</b>\n"
+            "Попробуйте позже.",
+            parse_mode="HTML"
+        )
+
+@dp.message(Command("joke"))
+async def random_joke(msg: types.Message):
+    """Получить случайный анекдот"""
+    await msg.answer("🔄 Ищу смешной анекдот...")
+    
+    joke = await get_random_joke()
+    
+    if joke:
+        # Добавляем кнопку для следующего анекдота
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="😄 Ещё анекдот", callback_data="joke_random")],
+            [InlineKeyboardButton(text="📋 Категории", callback_data="joke_categories")]
+        ])
+        await msg.answer(joke, reply_markup=kb, parse_mode="HTML")
+    else:
+        await msg.answer(
+            "😔 Не удалось найти анекдот. Попробуйте позже.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="joke_random")]
+            ])
+        )
+
+@dp.message(Command("jokes"))
+async def multiple_jokes(msg: types.Message):
+    """Получить несколько анекдотов"""
+    await msg.answer("🔄 Собираю подборку анекдотов...")
+    
+    jokes = await get_multiple_jokes(3)
+    
+    if jokes:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="😄 Ещё подборку", callback_data="jokes_multiple")]
+        ])
+        await msg.answer(jokes, reply_markup=kb, parse_mode="HTML")
+    else:
+        await msg.answer("😔 Не удалось получить подборку анекдотов. Попробуйте позже.")
+
+@dp.message(Command("joke_categories"))
+async def joke_categories(msg: types.Message):
+    """Показать категории анекдотов"""
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔹 Обычные", callback_data="joke_category_general"),
+            InlineKeyboardButton(text="💻 Программисты", callback_data="joke_category_programming")
+        ],
+        [
+            InlineKeyboardButton(text="👨 Отеческие", callback_data="joke_category_dad"),
+            InlineKeyboardButton(text="🚪 Стук в дверь", callback_data="joke_category_knock-knock")
+        ],
+        [InlineKeyboardButton(text="🎲 Случайная", callback_data="joke_random")]
+    ])
+    
+    await msg.answer(
+        "📋 <b>Категории анекдотов:</b>\n\n"
+        "Выберите категорию:",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
+
 @dp.message(Command("weather"))
 async def weather_cmd(msg: types.Message):
     conn = sqlite3.connect('weather_bot.db')
@@ -1332,7 +1508,8 @@ async def weather_cmd(msg: types.Message):
                     InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
                 ],
                 [
-                    InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
+                    InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu"),
+                    InlineKeyboardButton(text="😄 Анекдот", callback_data="joke_random")
                 ]
             ])
             await msg.answer(report, reply_markup=kb, parse_mode="HTML")
@@ -1378,6 +1555,11 @@ async def horoscope_menu(msg: types.Message):
         zodiac_buttons.append([
             InlineKeyboardButton(text="⭐ Мой знак", callback_data="horoscope_mine")
         ])
+    
+    # Добавляем кнопку с анекдотом
+    zodiac_buttons.append([
+        InlineKeyboardButton(text="😄 Случайный анекдот", callback_data="joke_random")
+    ])
     
     kb = InlineKeyboardMarkup(inline_keyboard=zodiac_buttons)
     
@@ -1538,7 +1720,8 @@ async def refresh_weather(call: types.CallbackQuery):
                 InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
             ],
             [
-                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
+                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu"),
+                InlineKeyboardButton(text="😄 Анекдот", callback_data="joke_random")
             ]
         ])
         
@@ -1564,7 +1747,8 @@ async def show_tomorrow_forecast(call: types.CallbackQuery):
                 InlineKeyboardButton(text="🔙 К текущей погоде", callback_data=f"refresh_{lat}_{lon}")
             ],
             [
-                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
+                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu"),
+                InlineKeyboardButton(text="😄 Анекдот", callback_data="joke_random")
             ]
         ])
         
@@ -1590,7 +1774,8 @@ async def show_weekly_forecast(call: types.CallbackQuery):
                 InlineKeyboardButton(text="🔙 К текущей погоде", callback_data=f"refresh_{lat}_{lon}")
             ],
             [
-                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
+                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu"),
+                InlineKeyboardButton(text="😄 Анекдот", callback_data="joke_random")
             ]
         ])
         
@@ -1733,11 +1918,117 @@ async def show_horoscope_for_sign(call, sign_en, period):
             InlineKeyboardButton(text="📆 Неделя", callback_data=f"horoscope_sign_weekly_{sign_en}")
         ],
         [
-            InlineKeyboardButton(text="🔙 К выбору знака", callback_data="back_to_horoscope_menu")
+            InlineKeyboardButton(text="🔙 К выбору знака", callback_data="back_to_horoscope_menu"),
+            InlineKeyboardButton(text="😄 Анекдот", callback_data="joke_random")
         ]
     ])
     
     await call.message.edit_text(report, reply_markup=kb, parse_mode="HTML")
+
+# --- ОБРАБОТЧИКИ ДЛЯ АНЕКДОТОВ ---
+
+@dp.callback_query(F.data == "joke_random")
+async def joke_random_callback(call: types.CallbackQuery):
+    await call.answer("Ищу анекдот...")
+    
+    joke = await get_random_joke()
+    
+    if joke:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="😄 Ещё анекдот", callback_data="joke_random")],
+            [InlineKeyboardButton(text="📋 Категории", callback_data="joke_categories")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_previous")]
+        ])
+        await call.message.edit_text(joke, reply_markup=kb, parse_mode="HTML")
+    else:
+        await call.message.edit_text(
+            "😔 Не удалось найти анекдот. Попробуйте позже.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="joke_random")],
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_previous")]
+            ])
+        )
+
+@dp.callback_query(F.data == "jokes_multiple")
+async def jokes_multiple_callback(call: types.CallbackQuery):
+    await call.answer("Собираю подборку...")
+    
+    jokes = await get_multiple_jokes(3)
+    
+    if jokes:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="😄 Ещё подборку", callback_data="jokes_multiple")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_previous")]
+        ])
+        await call.message.edit_text(jokes, reply_markup=kb, parse_mode="HTML")
+    else:
+        await call.message.edit_text(
+            "😔 Не удалось получить подборку анекдотов.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="jokes_multiple")],
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_previous")]
+            ])
+        )
+
+@dp.callback_query(F.data == "joke_categories")
+async def joke_categories_callback(call: types.CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔹 Обычные", callback_data="joke_category_general"),
+            InlineKeyboardButton(text="💻 Программисты", callback_data="joke_category_programming")
+        ],
+        [
+            InlineKeyboardButton(text="👨 Отеческие", callback_data="joke_category_dad"),
+            InlineKeyboardButton(text="🚪 Стук в дверь", callback_data="joke_category_knock-knock")
+        ],
+        [InlineKeyboardButton(text="🎲 Случайная", callback_data="joke_random")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_previous")]
+    ])
+    
+    await call.message.edit_text(
+        "📋 <b>Категории анекдотов:</b>\n\n"
+        "Выберите категорию:",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(F.data.startswith("joke_category_"))
+async def joke_category_callback(call: types.CallbackQuery):
+    category = call.data.replace("joke_category_", "")
+    await call.answer(f"Ищу анекдот в категории {category}...")
+    
+    joke = await get_random_joke(category)
+    
+    if joke:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔄 Ещё в этой категории", callback_data=f"joke_category_{category}"),
+                InlineKeyboardButton(text="📋 Категории", callback_data="joke_categories")
+            ]
+        ])
+        await call.message.edit_text(joke, reply_markup=kb, parse_mode="HTML")
+    else:
+        await call.message.edit_text(
+            f"😔 Не удалось найти анекдот в категории {category}.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📋 Категории", callback_data="joke_categories")]
+            ])
+        )
+
+@dp.callback_query(F.data == "back_to_previous")
+async def back_to_previous(call: types.CallbackQuery):
+    """Вернуться к предыдущему меню (пытается определить контекст)"""
+    await call.answer()
+    # Просто отправляем сообщение с основным меню
+    await call.message.edit_text(
+        "🤖 <b>Главное меню</b>\n\n"
+        "Используйте команды:\n"
+        "/weather - Погода\n"
+        "/horoscope - Гороскоп\n"
+        "/joke - Анекдот\n"
+        "/help - Помощь",
+        parse_mode="HTML"
+    )
 
 # --- ОБРАБОТЧИКИ СООБЩЕНИЙ ---
 
@@ -1761,7 +2052,8 @@ async def handle_location(msg: types.Message):
                 InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
             ],
             [
-                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
+                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu"),
+                InlineKeyboardButton(text="😄 Анекдот", callback_data="joke_random")
             ]
         ])
         
@@ -1794,7 +2086,8 @@ async def handle_city(msg: types.Message):
                 InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
             ],
             [
-                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
+                InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu"),
+                InlineKeyboardButton(text="😄 Анекдот", callback_data="joke_random")
             ]
         ])
         
@@ -1842,7 +2135,8 @@ async def mailing():
                                     InlineKeyboardButton(text="📆 На неделю", callback_data=f"week_{coord['lat']}_{coord['lon']}")
                                 ],
                                 [
-                                    InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu")
+                                    InlineKeyboardButton(text="🔮 Гороскоп", callback_data="horoscope_menu"),
+                                    InlineKeyboardButton(text="😄 Анекдот", callback_data="joke_random")
                                 ]
                             ])
                             
@@ -1866,7 +2160,7 @@ async def mailing():
 # --- ЗАПУСК ---
 async def main():
     logger.info("=" * 50)
-    logger.info("🚀 ЗАПУСК БОТА ПОГОДЫ С ГОРОСКОПОМ")
+    logger.info("🚀 ЗАПУСК БОТА ПОГОДЫ С ГОРОСКОПОМ И АНЕКДОТАМИ")
     logger.info("=" * 50)
     
     init_db()
@@ -1892,6 +2186,13 @@ async def main():
         logger.info("✅ API гороскопа работает!")
     else:
         logger.info("✅ Резервные данные гороскопа загружены")
+    
+    logger.info("\n😄 ПРОВЕРКА API АНЕКДОТОВ:")
+    joke_test = await get_random_joke()
+    if joke_test:
+        logger.info("✅ API анекдотов работает!")
+    else:
+        logger.warning("⚠️ API анекдотов временно недоступно")
     
     logger.info("\n" + "=" * 50)
     logger.info("✅ БОТ ГОТОВ К РАБОТЕ!")
