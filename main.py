@@ -6,7 +6,7 @@ import logging
 import os
 import math
 import random
-import anecapi  # Библиотека для русских анекдотов
+import anecAPI  # Библиотека для русских анекдотов
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
