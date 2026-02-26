@@ -51,12 +51,13 @@ def init_db():
     conn = sqlite3.connect('weather_bot.db')
     cur = conn.cursor()
     cur.execute('''CREATE TABLE IF NOT EXISTS users 
-                   (id INTEGER PRIMARY KEY, city TEXT, time INTEGER DEFAULT 8, timezone INTEGER DEFAULT 10800)''')
+                   (id INTEGER PRIMARY KEY, city TEXT, time INTEGER DEFAULT 8, 
+                    timezone INTEGER DEFAULT 10800, zodiac_sign TEXT)''')
     conn.commit()
     conn.close()
     logger.info("✅ База данных инициализирована")
 
-def update_user(user_id, city=None, time=None, timezone=None):
+def update_user(user_id, city=None, time=None, timezone=None, zodiac_sign=None):
     conn = sqlite3.connect('weather_bot.db')
     cur = conn.cursor()
     
@@ -66,9 +67,10 @@ def update_user(user_id, city=None, time=None, timezone=None):
     
     if not exists:
         # Вставляем нового пользователя
-        cur.execute('''INSERT INTO users (id, city, time, timezone) 
-                       VALUES (?, ?, ?, ?)''',
-                   (user_id, city if city else '', time if time else 8, timezone if timezone else 10800))
+        cur.execute('''INSERT INTO users (id, city, time, timezone, zodiac_sign) 
+                       VALUES (?, ?, ?, ?, ?)''',
+                   (user_id, city if city else '', time if time else 8, 
+                    timezone if timezone else 10800, zodiac_sign))
         logger.info(f"Новый пользователь {user_id} добавлен")
     else:
         # Обновляем существующего
@@ -79,9 +81,236 @@ def update_user(user_id, city=None, time=None, timezone=None):
             cur.execute('UPDATE users SET time = ? WHERE id = ?', (int(time), user_id))
         if timezone is not None:
             cur.execute('UPDATE users SET timezone = ? WHERE id = ?', (int(timezone), user_id))
+        if zodiac_sign:
+            cur.execute('UPDATE users SET zodiac_sign = ? WHERE id = ?', (zodiac_sign, user_id))
     
     conn.commit()
     conn.close()
+
+def get_user_zodiac(user_id):
+    """Получить сохраненный знак зодиака пользователя"""
+    conn = sqlite3.connect('weather_bot.db')
+    cur = conn.cursor()
+    cur.execute('SELECT zodiac_sign FROM users WHERE id = ?', (user_id,))
+    result = cur.fetchone()
+    conn.close()
+    return result[0] if result and result[0] else None
+
+# --- ФУНКЦИИ ДЛЯ ГОРОСКОПА ---
+ZODIAC_SIGNS = {
+    'aries': {'name': 'Овен', 'emoji': '♈', 'dates': '21 марта - 19 апреля'},
+    'taurus': {'name': 'Телец', 'emoji': '♉', 'dates': '20 апреля - 20 мая'},
+    'gemini': {'name': 'Близнецы', 'emoji': '♊', 'dates': '21 мая - 20 июня'},
+    'cancer': {'name': 'Рак', 'emoji': '♋', 'dates': '21 июня - 22 июля'},
+    'leo': {'name': 'Лев', 'emoji': '♌', 'dates': '23 июля - 22 августа'},
+    'virgo': {'name': 'Дева', 'emoji': '♍', 'dates': '23 августа - 22 сентября'},
+    'libra': {'name': 'Весы', 'emoji': '♎', 'dates': '23 сентября - 22 октября'},
+    'scorpio': {'name': 'Скорпион', 'emoji': '♏', 'dates': '23 октября - 21 ноября'},
+    'sagittarius': {'name': 'Стрелец', 'emoji': '♐', 'dates': '22 ноября - 21 декабря'},
+    'capricorn': {'name': 'Козерог', 'emoji': '♑', 'dates': '22 декабря - 19 января'},
+    'aquarius': {'name': 'Водолей', 'emoji': '♒', 'dates': '20 января - 18 февраля'},
+    'pisces': {'name': 'Рыбы', 'emoji': '♓', 'dates': '19 февраля - 20 марта'}
+}
+
+# Соответствие английских названий русским
+ZODIAC_EN_TO_RU = {
+    'aries': 'овен',
+    'taurus': 'телец',
+    'gemini': 'близнецы',
+    'cancer': 'рак',
+    'leo': 'лев',
+    'virgo': 'дева',
+    'libra': 'весы',
+    'scorpio': 'скорпион',
+    'sagittarius': 'стрелец',
+    'capricorn': 'козерог',
+    'aquarius': 'водолей',
+    'pisces': 'рыбы'
+}
+
+async def get_horoscope(sign, timeframe='today'):
+    """
+    Получить гороскоп для знака зодиака через aztro API
+    
+    Args:
+        sign (str): Знак зодиака на английском (aries, taurus, etc.)
+        timeframe (str): today, tomorrow, yesterday, weekly
+    
+    Returns:
+        dict: Данные гороскопа или None при ошибке
+    """
+    url = "https://aztro.sameerkumar.website/"
+    params = {
+        'sign': sign,
+        'day': timeframe
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            logger.info(f"Запрос гороскопа для {sign} на {timeframe}")
+            async with session.post(url, params=params, timeout=10) as resp:
+                if resp.status != 200:
+                    logger.error(f"Ошибка получения гороскопа: {resp.status}")
+                    return None
+                
+                data = await resp.json()
+                logger.info(f"Гороскоп для {sign} успешно получен")
+                return data
+                
+        except asyncio.TimeoutError:
+            logger.error("Таймаут при запросе гороскопа")
+            return None
+        except Exception as e:
+            logger.error(f"Ошибка получения гороскопа: {e}")
+            return None
+
+def format_horoscope(data, sign_name, sign_emoji, timeframe):
+    """Форматировать данные гороскопа для отображения"""
+    
+    # Определяем заголовок в зависимости от периода
+    if timeframe == 'today':
+        period = 'Сегодня'
+        period_emoji = '📅'
+    elif timeframe == 'tomorrow':
+        period = 'Завтра'
+        period_emoji = '🔮'
+    elif timeframe == 'yesterday':
+        period = 'Вчера'
+        period_emoji = '📆'
+    elif timeframe == 'weekly':
+        period = 'На неделю'
+        period_emoji = '🗓'
+    else:
+        period = 'Сегодня'
+        period_emoji = '📅'
+    
+    # Форматируем дату
+    current_date = data.get('current_date', '')
+    if current_date:
+        date_str = f" ({current_date})"
+    else:
+        date_str = ""
+    
+    # Извлекаем данные
+    description = data.get('description', '')
+    compatibility = data.get('compatibility', '')
+    mood = data.get('mood', '')
+    color = data.get('color', '')
+    lucky_number = data.get('lucky_number', '')
+    lucky_time = data.get('lucky_time', '')
+    
+    # Формируем отчет
+    report = (
+        f"{sign_emoji} <b>{sign_name} {period}{date_str}</b>\n\n"
+        f"📝 <b>Гороскоп:</b>\n{description}\n\n"
+    )
+    
+    # Добавляем дополнительную информацию, если она есть
+    details = []
+    if compatibility:
+        details.append(f"💕 Совместимость: {compatibility}")
+    if mood:
+        details.append(f"😊 Настроение: {mood}")
+    if color:
+        details.append(f"🎨 Цвет: {color}")
+    if lucky_number:
+        details.append(f"🔢 Счастливое число: {lucky_number}")
+    if lucky_time:
+        details.append(f"⏰ Удачное время: {lucky_time}")
+    
+    if details:
+        report += "✨ <b>Дополнительно:</b>\n" + "\n".join(f"   {d}" for d in details)
+    
+    # Добавляем совет дня
+    advice = get_horoscope_advice(sign_name, description)
+    report += f"\n\n💡 <b>Совет дня:</b>\n{advice}"
+    
+    return report
+
+def get_horoscope_advice(sign_name, description):
+    """Получить персонализированный совет по гороскопу"""
+    
+    advice_pool = [
+        f"✨ {sign_name}, доверяйте своей интуиции сегодня",
+        f"🌟 Звезды говорят, что сегодня отличный день для новых начинаний",
+        f"💫 Не бойтесь перемен - они принесут удачу",
+        f"⭐ Сегодня лучше прислушаться к советам близких",
+        f"🌠 Ваша энергия сегодня на подъеме - используйте ее с умом",
+        f"✨ Уделите время саморазвитию и обучению",
+        f"🌟 Сегодня удача на вашей стороне",
+        f"💫 Не забывайте о здоровье и отдыхе",
+        f"⭐ Общение с друзьями принесет радость",
+        f"🌠 Доверяйте своим идеям - они приведут к успеху"
+    ]
+    
+    # Анализируем описание для более точного совета
+    desc_lower = description.lower()
+    
+    if "love" in desc_lower or "romance" in desc_lower or "отношен" in desc_lower:
+        advice_pool.extend([
+            f"❤️ {sign_name}, сегодня отличный день для романтики",
+            f"💕 Откройте свое сердце для любви",
+            f"💖 Близкие люди подарят вам радость"
+        ])
+    
+    if "work" in desc_lower or "career" in desc_lower or "работ" in desc_lower:
+        advice_pool.extend([
+            f"💼 {sign_name}, сосредоточьтесь на важных задачах",
+            f"📈 Карьерный рост возможен - действуйте",
+            f"🎯 Ваши усилия на работе будут вознаграждены"
+        ])
+    
+    if "money" in desc_lower or "finance" in desc_lower or "деньг" in desc_lower:
+        advice_pool.extend([
+            f"💰 {sign_name}, будьте внимательны с финансами",
+            f"💸 Удачный день для финансовых решений",
+            f"💳 Не тратьте деньги импульсивно"
+        ])
+    
+    if "health" in desc_lower or "здоров" in desc_lower:
+        advice_pool.extend([
+            f"🏃 {sign_name}, займитесь своим здоровьем",
+            f"🧘 Медитация и спорт помогут восстановить силы",
+            f"🥗 Обратите внимание на питание"
+        ])
+    
+    return random.choice(advice_pool)
+
+def get_zodiac_sign_by_date(birth_date):
+    """Определить знак зодиака по дате рождения"""
+    if isinstance(birth_date, str):
+        try:
+            birth_date = datetime.datetime.strptime(birth_date, "%d.%m").date()
+        except:
+            return None
+    
+    month = birth_date.month
+    day = birth_date.day
+    
+    if (month == 3 and day >= 21) or (month == 4 and day <= 19):
+        return 'aries'
+    elif (month == 4 and day >= 20) or (month == 5 and day <= 20):
+        return 'taurus'
+    elif (month == 5 and day >= 21) or (month == 6 and day <= 20):
+        return 'gemini'
+    elif (month == 6 and day >= 21) or (month == 7 and day <= 22):
+        return 'cancer'
+    elif (month == 7 and day >= 23) or (month == 8 and day <= 22):
+        return 'leo'
+    elif (month == 8 and day >= 23) or (month == 9 and day <= 22):
+        return 'virgo'
+    elif (month == 9 and day >= 23) or (month == 10 and day <= 22):
+        return 'libra'
+    elif (month == 10 and day >= 23) or (month == 11 and day <= 21):
+        return 'scorpio'
+    elif (month == 11 and day >= 22) or (month == 12 and day <= 21):
+        return 'sagittarius'
+    elif (month == 12 and day >= 22) or (month == 1 and day <= 19):
+        return 'capricorn'
+    elif (month == 1 and day >= 20) or (month == 2 and day <= 18):
+        return 'aquarius'
+    else:
+        return 'pisces'
 
 # --- ФУНКЦИИ ДЛЯ ПОГОДЫ ---
 def get_wind_direction(deg):
@@ -242,39 +471,6 @@ def get_moon_illumination(phase):
     illumination = math.sin(phase * math.pi) ** 2 * 100
     return round(illumination, 1)
 
-def get_zodiac_sign(date=None):
-    """Определить знак зодиака по дате (для дополнительной информации)"""
-    if date is None:
-        date = datetime.datetime.now()
-    
-    month = date.month
-    day = date.day
-    
-    if (month == 3 and day >= 21) or (month == 4 and day <= 19):
-        return "♈ Овен"
-    elif (month == 4 and day >= 20) or (month == 5 and day <= 20):
-        return "♉ Телец"
-    elif (month == 5 and day >= 21) or (month == 6 and day <= 20):
-        return "♊ Близнецы"
-    elif (month == 6 and day >= 21) or (month == 7 and day <= 22):
-        return "♋ Рак"
-    elif (month == 7 and day >= 23) or (month == 8 and day <= 22):
-        return "♌ Лев"
-    elif (month == 8 and day >= 23) or (month == 9 and day <= 22):
-        return "♍ Дева"
-    elif (month == 9 and day >= 23) or (month == 10 and day <= 22):
-        return "♎ Весы"
-    elif (month == 10 and day >= 23) or (month == 11 and day <= 21):
-        return "♏ Скорпион"
-    elif (month == 11 and day >= 22) or (month == 12 and day <= 21):
-        return "♐ Стрелец"
-    elif (month == 12 and day >= 22) or (month == 1 and day <= 19):
-        return "♑ Козерог"
-    elif (month == 1 and day >= 20) or (month == 2 and day <= 18):
-        return "♒ Водолей"
-    else:
-        return "♓ Рыбы"
-
 async def get_moon_data():
     """Получить полные данные о луне"""
     now = datetime.datetime.now()
@@ -282,14 +478,12 @@ async def get_moon_data():
     emoji = get_moon_emoji(phase)
     name = get_moon_name(phase)
     illumination = get_moon_illumination(phase)
-    zodiac = get_zodiac_sign(now)
     
     return {
         'phase': phase,
         'emoji': emoji,
         'name': name,
-        'illumination': illumination,
-        'zodiac': zodiac
+        'illumination': illumination
     }
 
 async def test_api_key():
@@ -1244,8 +1438,7 @@ def format_weather_report(weather_data, moon_data, geomagnetic, estimated_uvi, u
     moon_text = (
         f"\n\n🌙 <b>Луна сегодня:</b>\n"
         f"{moon_data['emoji']} {moon_data['name']}\n"
-        f"💡 Освещенность: {moon_data['illumination']}%\n"
-        f"♈ Знак зодиака: {moon_data['zodiac']}"
+        f"💡 Освещенность: {moon_data['illumination']}%"
     )
     
     # Добавляем информацию о восходе и закате
@@ -1379,16 +1572,19 @@ async def help_cmd(msg: types.Message):
 
 /start - Начать настройку
 /help - Показать эту справку
+/weather - Показать погоду для сохраненного города
+/horoscope - Показать меню гороскопа
+/zodiac - Установить ваш знак зодиака
 /uv - Информация об UV-индексе
 /magnet - Информация о магнитных бурях
 /moon - Информация о фазе луны
-/weather - Показать погоду для сохраненного города
 /test - Проверить работу API
 
 <b>Как пользоваться:</b>
 1. Выберите время для рассылки
 2. Отправьте свою локацию или название города
 3. Получайте ежедневную погоду с деталями
+4. Используйте /horoscope для гороскопа
 
 <b>В погоде отображается:</b>
 • Температура и ощущение
@@ -1492,8 +1688,7 @@ async def moon_info(msg: types.Message):
     await msg.answer(
         f"🌙 <b>Фаза луны сегодня:</b>\n\n"
         f"{moon_data['emoji']} <b>{moon_data['name']}</b>\n"
-        f"💡 Освещенность: {moon_data['illumination']}%\n"
-        f"♈ Знак зодиака: {moon_data['zodiac']}\n\n"
+        f"💡 Освещенность: {moon_data['illumination']}%\n\n"
         f"📅 <b>Ближайшие события:</b>\n"
         f"• До полнолуния: {days_to_full:.1f} дней\n"
         f"• До новолуния: {days_to_new:.1f} дней\n\n"
@@ -1508,6 +1703,251 @@ async def moon_info(msg: types.Message):
         f"🌘 Убывающий серп",
         parse_mode="HTML"
     )
+
+# --- НОВЫЕ КОМАНДЫ ДЛЯ ГОРОСКОПА ---
+
+@dp.message(Command("horoscope"))
+async def horoscope_menu(msg: types.Message):
+    """Меню гороскопа с выбором знака"""
+    
+    # Создаем клавиатуру со всеми знаками зодиака
+    zodiac_buttons = []
+    row = []
+    
+    for i, (sign_en, sign_data) in enumerate(ZODIAC_SIGNS.items()):
+        button = InlineKeyboardButton(
+            text=f"{sign_data['emoji']} {sign_data['name']}", 
+            callback_data=f"horoscope_{sign_en}"
+        )
+        row.append(button)
+        
+        # По 3 кнопки в ряд
+        if (i + 1) % 3 == 0:
+            zodiac_buttons.append(row)
+            row = []
+    
+    # Добавляем оставшиеся кнопки
+    if row:
+        zodiac_buttons.append(row)
+    
+    # Добавляем кнопку для выбора периода
+    zodiac_buttons.append([
+        InlineKeyboardButton(text="📅 Сегодня", callback_data="horoscope_period_today"),
+        InlineKeyboardButton(text="🔮 Завтра", callback_data="horoscope_period_tomorrow"),
+        InlineKeyboardButton(text="📆 Неделя", callback_data="horoscope_period_weekly")
+    ])
+    
+    # Добавляем кнопку для моего знака
+    zodiac_buttons.append([
+        InlineKeyboardButton(text="⭐ Мой знак", callback_data="horoscope_mine")
+    ])
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=zodiac_buttons)
+    
+    await msg.answer(
+        "🔮 <b>Астрологический прогноз</b>\n\n"
+        "Выберите ваш знак зодиака или период:",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
+
+@dp.message(Command("zodiac"))
+async def set_zodiac(msg: types.Message):
+    """Установить знак зодиака пользователя"""
+    
+    # Создаем клавиатуру для выбора знака
+    zodiac_buttons = []
+    row = []
+    
+    for i, (sign_en, sign_data) in enumerate(ZODIAC_SIGNS.items()):
+        button = InlineKeyboardButton(
+            text=f"{sign_data['emoji']} {sign_data['name']}", 
+            callback_data=f"setzodiac_{sign_en}"
+        )
+        row.append(button)
+        
+        # По 3 кнопки в ряд
+        if (i + 1) % 3 == 0:
+            zodiac_buttons.append(row)
+            row = []
+    
+    # Добавляем оставшиеся кнопки
+    if row:
+        zodiac_buttons.append(row)
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=zodiac_buttons)
+    
+    await msg.answer(
+        "⭐ <b>Выберите ваш знак зодиака:</b>\n\n"
+        "Это позволит быстро получать гороскоп для вашего знака.",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(F.data.startswith("setzodiac_"))
+async def process_set_zodiac(call: types.CallbackQuery):
+    """Обработка выбора знака зодиака"""
+    sign_en = call.data.split("_")[1]
+    sign_data = ZODIAC_SIGNS.get(sign_en)
+    
+    if sign_data:
+        # Сохраняем знак в БД
+        update_user(call.from_user.id, zodiac_sign=sign_en)
+        
+        await call.message.edit_text(
+            f"✅ Ваш знак зодиака сохранен: {sign_data['emoji']} {sign_data['name']}\n\n"
+            f"Теперь вы можете использовать кнопку «Мой знак» в меню гороскопа."
+        )
+    else:
+        await call.message.edit_text("❌ Ошибка: знак не найден")
+    
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("horoscope_"))
+async def process_horoscope(call: types.CallbackQuery):
+    """Обработка запросов гороскопа"""
+    data = call.data
+    
+    # Обработка периода
+    if data == "horoscope_period_today":
+        # Сохраняем выбранный период во временной переменной
+        await call.message.edit_text(
+            "📅 Выберите знак зодиака для получения гороскопа на сегодня:",
+            reply_markup=create_zodiac_keyboard("today")
+        )
+        await call.answer()
+        return
+    
+    elif data == "horoscope_period_tomorrow":
+        await call.message.edit_text(
+            "🔮 Выберите знак зодиака для получения гороскопа на завтра:",
+            reply_markup=create_zodiac_keyboard("tomorrow")
+        )
+        await call.answer()
+        return
+    
+    elif data == "horoscope_period_weekly":
+        await call.message.edit_text(
+            "📆 Выберите знак зодиака для получения гороскопа на неделю:",
+            reply_markup=create_zodiac_keyboard("weekly")
+        )
+        await call.answer()
+        return
+    
+    elif data == "horoscope_mine":
+        # Получаем сохраненный знак пользователя
+        zodiac_sign = get_user_zodiac(call.from_user.id)
+        
+        if zodiac_sign:
+            # Показываем гороскоп на сегодня для сохраненного знака
+            await call.answer("Загружаю гороскоп...")
+            await show_horoscope_for_sign(call, zodiac_sign, "today")
+        else:
+            await call.message.edit_text(
+                "❌ Вы еще не сохранили свой знак зодиака.\n\n"
+                "Используйте команду /zodiac чтобы выбрать знак.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="⭐ Выбрать знак", callback_data="back_to_zodiac")]
+                ])
+            )
+        await call.answer()
+        return
+    
+    # Обработка выбора знака с периодом
+    elif data.startswith("horoscope_sign_"):
+        # Формат: horoscope_sign_{period}_{sign}
+        parts = data.split("_")
+        period = parts[2]
+        sign_en = parts[3]
+        
+        await call.answer("Загружаю гороскоп...")
+        await show_horoscope_for_sign(call, sign_en, period)
+        return
+    
+    # Обработка выбора знака без периода (для главного меню)
+    else:
+        sign_en = data.split("_")[1]
+        await call.answer("Загружаю гороскоп...")
+        await show_horoscope_for_sign(call, sign_en, "today")
+        return
+
+def create_zodiac_keyboard(period):
+    """Создать клавиатуру со знаками зодиака для выбранного периода"""
+    zodiac_buttons = []
+    row = []
+    
+    for i, (sign_en, sign_data) in enumerate(ZODIAC_SIGNS.items()):
+        button = InlineKeyboardButton(
+            text=f"{sign_data['emoji']} {sign_data['name']}", 
+            callback_data=f"horoscope_sign_{period}_{sign_en}"
+        )
+        row.append(button)
+        
+        # По 3 кнопки в ряд
+        if (i + 1) % 3 == 0:
+            zodiac_buttons.append(row)
+            row = []
+    
+    # Добавляем оставшиеся кнопки
+    if row:
+        zodiac_buttons.append(row)
+    
+    # Добавляем кнопку возврата
+    zodiac_buttons.append([
+        InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_horoscope_menu")
+    ])
+    
+    return InlineKeyboardMarkup(inline_keyboard=zodiac_buttons)
+
+async def show_horoscope_for_sign(call, sign_en, period):
+    """Показать гороскоп для выбранного знака и периода"""
+    
+    sign_data = ZODIAC_SIGNS.get(sign_en)
+    if not sign_data:
+        await call.message.edit_text("❌ Ошибка: знак не найден")
+        return
+    
+    # Получаем гороскоп
+    horoscope_data = await get_horoscope(sign_en, period)
+    
+    if not horoscope_data:
+        await call.message.edit_text(
+            f"❌ Не удалось получить гороскоп для {sign_data['emoji']} {sign_data['name']}.\n"
+            f"Попробуйте позже.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_horoscope_menu")]
+            ])
+        )
+        return
+    
+    # Форматируем и отправляем
+    report = format_horoscope(horoscope_data, sign_data['name'], sign_data['emoji'], period)
+    
+    # Создаем клавиатуру для навигации
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📅 Сегодня", callback_data=f"horoscope_sign_today_{sign_en}"),
+            InlineKeyboardButton(text="🔮 Завтра", callback_data=f"horoscope_sign_tomorrow_{sign_en}"),
+            InlineKeyboardButton(text="📆 Неделя", callback_data=f"horoscope_sign_weekly_{sign_en}")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 К выбору знака", callback_data="back_to_horoscope_menu")
+        ]
+    ])
+    
+    await call.message.edit_text(report, reply_markup=kb, parse_mode="HTML")
+
+@dp.callback_query(F.data == "back_to_horoscope_menu")
+async def back_to_horoscope_menu(call: types.CallbackQuery):
+    """Вернуться в главное меню гороскопа"""
+    await horoscope_menu(call.message)
+    await call.answer()
+
+@dp.callback_query(F.data == "back_to_zodiac")
+async def back_to_zodiac(call: types.CallbackQuery):
+    """Вернуться к выбору знака зодиака"""
+    await set_zodiac(call.message)
+    await call.answer()
 
 @dp.callback_query(F.data.startswith("set_"))
 async def set_time(call: types.CallbackQuery):
@@ -1734,7 +2174,7 @@ async def mailing():
 
 async def main():
     logger.info("=" * 50)
-    logger.info("🚀 ЗАПУСК БОТА ПОГОДЫ")
+    logger.info("🚀 ЗАПУСК БОТА ПОГОДЫ С ГОРОСКОПОМ")
     logger.info("=" * 50)
     
     init_db()
